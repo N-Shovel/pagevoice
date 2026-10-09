@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Build output
+build/
+dist/
+
+# Copyrighted test books and their golden text. Never commit these.
+tests/corpus/private/
+# Public-domain source files are downloaded by checksum, not committed
+tests/corpus/.downloads/
+
+# Benchmark audio (history.csv is committed, the audio is not)
+benchmarks/out/
+
+# Personal Claude Code overrides
+.claude/settings.local.json

@@ -1,0 +1,51 @@
+[project]
+name = "pagevoice"
+dynamic = ["version"]
+description = "Turn EPUB, PDF and TXT books into audiobooks, offline, with natural voices."
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+authors = [{ name = "N-Shovel" }]
+# Runtime dependencies are added one at a time through the add-dependency skill,
+# which checks the license and records it in docs/DECISIONS.md.
+dependencies = []
+
+[project.scripts]
+pagevoice = "pagevoice.cli:main"
+
+[dependency-groups]
+dev = [
+    "pip-licenses>=5",
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/pagevoice/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pagevoice", "src/pagevoice_gui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: needs the voice model or takes more than a few seconds",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "tools"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"fitz".msg = "PyMuPDF is AGPL. Use pypdfium2 or pdfplumber (docs/DECISIONS.md D5)."
+"pymupdf".msg = "PyMuPDF is AGPL. Use pypdfium2 or pdfplumber (docs/DECISIONS.md D5)."
+"ebooklib".msg = "EbookLib is AGPL. Parse EPUB with zipfile and an XML parser (docs/DECISIONS.md D5)."
+"torch".msg = "No PyTorch in PageVoice. Run models with onnxruntime (docs/DECISIONS.md D3)."

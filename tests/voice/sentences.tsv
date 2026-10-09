@@ -1,0 +1,68 @@
+# Fixed sentence list for the voice: benchmarks, blind A/B listening and the round-trip check.
+# PROTECTED: only a human edits this file (see .claude/hooks/protect_files.py).
+#
+# Columns (tab-separated): id, category, text, spoken
+#   text    what appears in the book
+#   spoken  what an en-US reader should say. Empty or missing means "same words as text".
+#           Used by the English normalizer tests and as the reference for the round-trip diff.
+# Long sentences are public-domain (Dickens, Melville).
+id	category	text	spoken
+num-01	numbers	The war ended in 1945.	The war ended in nineteen forty-five.
+num-02	numbers	She was born in 1905 and died in 2008.	She was born in nineteen oh five and died in two thousand eight.
+num-03	numbers	By 2025 the town had 12,408 residents.	By twenty twenty-five the town had twelve thousand four hundred eight residents.
+num-04	numbers	Sales rose 3.5 percent, then fell 45%.	Sales rose three point five percent, then fell forty-five percent.
+num-05	numbers	Turn to page 112 and read lines 7–9.	Turn to page one hundred twelve and read lines seven to nine.
+num-06	numbers	He finished 1st; she came 22nd out of 103.	He finished first; she came twenty-second out of one hundred three.
+num-07	numbers	The 1990s gave way to the 21st century.	The nineteen nineties gave way to the twenty-first century.
+num-08	numbers	It was -5 °C at 6:30 a.m.	It was minus five degrees Celsius at six thirty a m.
+num-09	numbers	Mix 1/2 cup of flour with 2 eggs.	Mix one half cup of flour with two eggs.
+num-10	numbers	The phone rang at 10:05.	The phone rang at ten oh five.
+date-01	dates	On July 4, 1776, they signed it.	On July fourth, seventeen seventy-six, they signed it.
+date-02	dates	The letter is dated 3 March 1891.	The letter is dated the third of March, eighteen ninety-one.
+date-03	dates	Published 2024-03-15.	Published March fifteenth, twenty twenty-four.
+date-04	dates	It happened in the spring of '68.	It happened in the spring of sixty-eight.
+money-01	money	The ticket cost $5.	The ticket cost five dollars.
+money-02	money	Coffee is $3.50 here.	Coffee is three dollars and fifty cents here.
+money-03	money	He owed £20 and 6 shillings.	He owed twenty pounds and six shillings.
+money-04	money	The deal was worth €1.2 million.	The deal was worth one point two million euros.
+money-05	money	They raised $1,000,000 in a week.	They raised one million dollars in a week.
+abbr-01	abbreviations	Dr. Jones lives at 12 Oak Dr. near St. Paul's.	Doctor Jones lives at twelve Oak Drive near Saint Paul's.
+abbr-02	abbreviations	Mr. and Mrs. Bennet had five daughters.	Mister and Missus Bennet had five daughters.
+abbr-03	abbreviations	Bring tools, e.g. a hammer, nails, etc.	Bring tools, for example a hammer, nails, et cetera.
+abbr-04	abbreviations	Smith vs. Jones went to the U.S. Supreme Court.	Smith versus Jones went to the U S Supreme Court.
+abbr-05	abbreviations	Lt. Col. Hughes worked with the FBI and NASA.	Lieutenant Colonel Hughes worked with the F B I and NASA.
+abbr-06	abbreviations	See No. 5, p. 12, and fig. 3.	See number five, page twelve, and figure three.
+abbr-07	abbreviations	Prof. Lee met Gen. Grant at 4 p.m.	Professor Lee met General Grant at four p m.
+roman-01	roman_numerals	Chapter IV begins at dawn.	Chapter four begins at dawn.
+roman-02	roman_numerals	Henry VIII had six wives.	Henry the Eighth had six wives.
+roman-03	roman_numerals	Louis XIV built Versailles.	Louis the Fourteenth built Versailles.
+roman-04	roman_numerals	After World War II, I said I would read Part III.	After World War two, I said I would read Part three.
+roman-05	roman_numerals	She took vitamin C and vitamin D.
+roman-06	roman_numerals	See the preface, page xiv.	See the preface, page fourteen.
+roman-07	roman_numerals	Pope John Paul II visited in 1979.	Pope John Paul the Second visited in nineteen seventy-nine.
+roman-08	roman_numerals	BOOK II. CHAPTER I.	Book two. Chapter one.
+dlg-01	dialogue	“Wait—” she said. “I never—”
+dlg-02	dialogue	“Are you coming?” he asked.
+dlg-03	dialogue	‘Yes,’ she replied, ‘but not yet.’
+dlg-04	dialogue	“He told me, ‘Never again,’ and walked out.”
+dlg-05	dialogue	’Tis nearly six o’clock, and rock ’n’ roll is playing.	'Tis nearly six o'clock, and rock and roll is playing.
+dlg-06	dialogue	“Well…” he began, then stopped.
+dlg-07	dialogue	“No!” “Yes!” “No!”—and so it went on for an hour.
+long-01	long_sentences	It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way—in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.
+long-02	long_sentences	Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.
+long-03	long_sentences	Fog everywhere. Fog up the river, where it flows among green aits and meadows; fog down the river, where it rolls defiled among the tiers of shipping and the waterside pollutions of a great (and dirty) city.
+name-01	names	Hermione and Persephone met Penelope in Ptolemy's library.
+name-02	names	Siobhan, Niamh, Aoife and Saoirse walked to Leicester.
+name-03	names	Nguyen and Xiomara drove through Worcestershire to Gloucester.
+name-04	names	Elizabeth Bennet disliked Mr. Darcy at first.	Elizabeth Bennet disliked Mister Darcy at first.
+name-05	names	Uriah Heep and Ichabod Crane never met Phileas Fogg.
+name-06	names	Dostoevsky admired Goethe, and Nietzsche read Cervantes.
+name-07	names	Captain Ahab chased the whale while Queequeg and Tashtego rowed.
+het-01	heteronyms	She will polish the Polish silver.
+het-02	heteronyms	I read the book last year, and I read it again every spring.
+het-03	heteronyms	The wind was too strong to wind the sail.
+het-04	heteronyms	They live near the live music venue.
+het-05	heteronyms	A tear fell when she saw the tear in her dress.
+het-06	heteronyms	The lead singer wore a lead apron.
+sym-01	symbols	Smith & Sons, est. 1852, ranked #1.	Smith and Sons, established eighteen fifty-two, ranked number one.
+sym-02	symbols	See § 4 of the act.	See section four of the act.
