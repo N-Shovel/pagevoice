@@ -14,6 +14,12 @@
       "Bash(git diff)",
       "Bash(git diff *)",
       "Bash(git log *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr list *)",
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
+      "Bash(gh run watch *)",
       "PowerShell(uv run pytest)",
       "PowerShell(uv run pytest *)",
       "PowerShell(uv run ruff check *)",
@@ -35,6 +41,10 @@
       "Bash(git tag *)",
       "Bash(gh release *)",
       "Bash(gh workflow run *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh api -X PUT *)",
+      "Bash(gh api -X PATCH *)",
+      "Bash(gh api -X DELETE *)",
       "PowerShell(pip install *)",
       "PowerShell(python -m pip install *)",
       "PowerShell(py -m pip install *)",
@@ -44,7 +54,8 @@
       "PowerShell(git push *)",
       "PowerShell(git tag *)",
       "PowerShell(gh release *)",
-      "PowerShell(gh workflow run *)"
+      "PowerShell(gh workflow run *)",
+      "PowerShell(gh pr merge *)"
     ],
     "deny": [
       "Edit(tests/corpus/**/expected/**)",
@@ -86,6 +97,18 @@
             "command": "uv run --project \"$CLAUDE_PROJECT_DIR\" --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff_after_edit.py\"",
             "timeout": 60,
             "statusMessage": "ruff format + check"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"$CLAUDE_PROJECT_DIR\" --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/tests_before_stop.py\"",
+            "timeout": 300,
+            "statusMessage": "Running fast tests before finishing"
           }
         ]
       }

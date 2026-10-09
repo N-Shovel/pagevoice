@@ -68,7 +68,16 @@ def test_blocks_shell_writes(command):
         "git diff tests/corpus/public/x/expected/",
         "uv run pytest tests",
         "git status",
+        "uv run python tools/roundtrip.py",
+        "uv run python tools/benchmark.py --variants fp32 int8",
     ],
 )
 def test_allows_reading_shell_commands(command):
     assert run_hook("Bash", {"command": command}) == 0
+
+
+def test_tools_must_not_take_the_sentence_list_path():
+    # Known limitation: the guard can't tell a read from a write when python names a
+    # protected file, so tools/benchmark.py and tools/roundtrip.py read it by default.
+    command = "uv run python tools/roundtrip.py --sentences tests/voice/sentences.tsv"
+    assert run_hook("Bash", {"command": command}) == 2

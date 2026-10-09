@@ -52,7 +52,7 @@ docs/                   SPEC.md, DECISIONS.md
 | Round-trip check (planned) | `uv run --group roundtrip python tools/roundtrip.py` (see the `roundtrip-check` skill) |
 | Build (planned, M5) | `uv run pyinstaller packaging/pagevoice.spec` |
 
-After every `.py` edit, a hook runs `ruff format` and `ruff check` on that file and shows you any remaining problems. Fix them before moving on.
+After every `.py` edit, a hook runs `ruff format` and `ruff check` on that file and shows you any remaining problems. Fix them before moving on. When you try to finish, a Stop hook runs `pytest -m "not slow"`. If it fails, either fix the tests or tell the user plainly which ones fail.
 
 ## How to work here
 
@@ -64,4 +64,5 @@ After every `.py` edit, a hook runs `ruff format` and `ruff check` on that file 
   - `release`: user-only, via `/release`.
 - **At the end of each milestone** in SPEC.md §12, run the `spec-reviewer` agent and fix what it finds before calling the milestone done.
 - **Audio:** you can't hear it. Never claim the voice "sounds good". Report round-trip numbers, and ask the owner to listen for naturalness and names.
+- **`main` is protected:** work on a branch and open a PR. CI (ruff, fast tests and license check, on Windows and Ubuntu 22.04) must pass. Never push to `main` directly or force-push.
 - **Commits and PRs:** no Claude or AI attribution of any kind.

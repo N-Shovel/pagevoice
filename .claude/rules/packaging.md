@@ -38,6 +38,11 @@ The one-folder build goes inside an Inno Setup installer.
   - Without them, the build ships unsigned.
 - Sign everything Windows executes: the app exe, bundled DLLs where the SignPath policy allows, ffmpeg and the installer.
 
+## CI workflow
+
+- `.github/workflows/ci.yml` runs on every PR and every push to `main`.
+- Branch protection on `main` requires its jobs **by name**: `checks (windows-latest)` and `checks (ubuntu-22.04)`. Renaming the job or changing the matrix silently blocks every PR until branch protection is updated to match. Do both in the same change, and tell the owner.
+
 ## Model and secrets
 
 - The model and voices files are never in the installer. They are downloaded on first run, checked against the manifest.

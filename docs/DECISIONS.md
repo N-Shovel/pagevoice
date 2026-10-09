@@ -6,8 +6,9 @@ Format: **decision**, then *why*, then the alternatives that were rejected.
 
 ---
 
-### D1. License: GPL-3.0 (decided 2026-10-09)
+### D1. License: GPL-3.0-or-later (decided 2026-10-09)
 Most Kokoro setups use espeak-ng to turn text into phonemes, and espeak-ng is GPL, as is Piper now. Licensing the app GPL avoids the conflict. SignPath Foundation only signs open-source projects, so this also gets free code signing.
+"Or later" is the usual choice for GPL projects, and it stays compatible with GPL-3.0-only dependencies.
 *Rejected:* a closed or commercial version later. It would mean replacing the GPL parts and losing free signing, so it is ruled out now.
 
 ### D2. Python + PySide6 (2026-10-09)
@@ -67,6 +68,7 @@ Mispronounced character names are the biggest complaint about TTS audiobooks.
 - Per-book entries override the global list.
 - A whole-word, case-sensitive option keeps "Polish" and "polish" apart.
 - Lists are plain files people can import, export and share across a book series.
+- **Format: TSV** (2026-10-09). Users can edit it in a spreadsheet; TOML is for programmers. Files are read with or without a UTF-8 BOM, because Excel adds one.
 
 ### D16. Paragraph-level render cache (2026-10-09)
 The cache matters more than the output format. A crash at chapter 17 resumes at chapter 17, and fixing one paragraph re-renders only that paragraph.
@@ -110,11 +112,24 @@ We build a stripped-down ffmpeg in CI with only what we need: native AAC, LAME, 
 - pytest runs the tests.
 - hatchling is the build backend.
 - Python 3.13 is the version already installed on the dev laptop.
-*Open to change:* the owner didn't specify these; they are conventional defaults.
+The owner confirmed these on 2026-10-09. In M0, check that onnxruntime, PySide6, PyInstaller and the chosen G2P library all have Python 3.13 builds. If one doesn't, drop to 3.12; `requires-python` already allows it.
 
 ### D25. Claude Code setup (2026-10-09)
 - A short CLAUDE.md; path-scoped rules in `.claude/rules/`; hooks and permissions in `.claude/settings.json`; project skills for repeated procedures; and a read-only `spec-reviewer` agent run at the end of each milestone.
 - No MCP servers (the `gh` command line covers GitHub) and no third-party skill packs (skills can run scripts, so treat them like any dependency we didn't write).
+- **Stop hook** (added 2026-10-09): runs the fast tests whenever Claude tries to finish, so it can't call a task done while they fail. On the second attempt it lets the stop through, so it can't loop forever; Claude must then say which tests fail.
+
+### D26. Render cache lives in the user cache directory, with a size cap (2026-10-09)
+Kokoro outputs 24 kHz audio, so a 10-hour book's paragraph cache is about 1–2 GB even as FLAC.
+- Models, caches and settings go in the per-user directories from platformdirs.
+- The cache has a size cap the user can change.
+- A book's cache is cleared after a successful export, unless the book is still being edited.
+
+### D27. `main` is protected; everything arrives through pull requests with CI (2026-10-09)
+- **No direct pushes to `main`;** no force pushes or deletion. The initial commit was the only direct push.
+- **CI** (`.github/workflows/ci.yml`) runs ruff, `pytest -m "not slow"` and the license check on `windows-latest` and `ubuntu-22.04`. Branch protection requires both jobs by name.
+- **Releases:** the version bump goes through a `release/vX.Y.Z` branch and PR, and the tag goes on the merge commit.
+*Why:* the first commit going straight to `main` was fine, but it should be the last. CI gives branch protection something to require.
 
 ---
 

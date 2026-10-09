@@ -19,6 +19,8 @@ uv run --group roundtrip python tools/roundtrip.py
 uv run --group roundtrip python tools/roundtrip.py --book <book-id> --chapter 3
 ```
 
+With no arguments, the tool reads `tests/voice/sentences.tsv` **by default**; it has no option for that path. Never put the path on the command line. The shell guard blocks commands that run `python` and name that protected file, because it can't tell a read from a write.
+
 If `tools/roundtrip.py` doesn't exist yet, build it to this contract:
 
 1. Render each item with the engine (through the paragraph cache, so reruns are cheap).

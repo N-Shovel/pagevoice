@@ -62,7 +62,7 @@ PDF chapters:
 - There is a **global** list, plus **per-book** entries that override it.
 - Each entry has a "sounds like" respelling, an optional raw-phoneme field, and a preview button.
 - **Whole-word, case-sensitive option**, so "Polish" and "polish" stay separate.
-- Lists are stored as a plain file that people can import and export, so one list can be shared across a book series.
+- Lists are stored as a plain **TSV** file that people can import, export and edit in a spreadsheet, so one list can be shared across a book series. Accept files with or without a UTF-8 BOM, since Excel adds one.
 
 ## 6. Voice
 
@@ -82,6 +82,7 @@ PDF chapters:
 
 - Rendering goes **paragraph by paragraph into a cache**. If the app crashes at chapter 17, it picks up there. Fixing one paragraph re-renders only that paragraph.
 - A paragraph's cache key covers everything that changes its audio: normalized text, pronunciation entries applied, voice, model variant and speed.
+- **Cache size:** Kokoro outputs 24 kHz audio, so the cache for a 10-hour book is about 1–2 GB even as FLAC. It lives in the per-user cache directory (platformdirs) under a size cap the user can change. A book's cache is cleared after a successful export unless the book is still being edited.
 - **Default output:** one M4B with chapters, cover art and metadata, encoded as 64 kbps mono AAC. A 10-hour book comes to about 290 MB.
 - **Option:** one MP3 per chapter.
 - **ffmpeg is bundled.** It is a stripped-down LGPL-only build made in CI and signed with the app. It is never downloaded at runtime, and the system ffmpeg is never used.
@@ -100,6 +101,7 @@ PDF chapters:
   - SignPath signing switches on by itself once the `SIGNPATH_API_TOKEN` secret and the `SIGNPATH_ORGANIZATION_ID` variable exist.
 - **Repository:** `N-Shovel/pagevoice`, licensed GPL-3.0.
 - **SignPath Foundation:** apply early, because each project is approved separately.
+- **`main` is protected:** changes arrive only through pull requests. CI (`.github/workflows/ci.yml`) runs ruff, the fast tests and the license check on Windows and on Ubuntu 22.04, and both jobs must pass. Force pushes and deleting `main` are blocked. Releases bump the version on a `release/vX.Y.Z` branch and tag the merge commit.
 
 ## 10. Benchmarks and test machines
 
@@ -117,7 +119,7 @@ PDF chapters:
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | Week one: Kokoro benchmark | fp32 and int8 measured on the laptop and the CI runner, blind A/B done, G2P chosen (O1), model and voices hosted with a manifest |
+| M0 | Week one: Kokoro benchmark | fp32 and int8 measured on the laptop and the CI runner, blind A/B done, G2P chosen (O1), model and voices hosted with a manifest, Python 3.13 builds confirmed for onnxruntime, PySide6, PyInstaller and the chosen G2P (otherwise drop to 3.12) |
 | M1 | Ingest and cleanup | TXT, EPUB and PDF become chapters of paragraphs with removal spans. Scanned and multi-column pages are detected. Golden corpus passes. |
 | M2 | Speech | English normalizer passes the sentence list, pronunciation lists work, and the paragraph cache renders and resumes |
 | M3 | Export | CI-built ffmpeg; M4B with chapters, cover and metadata; MP3 per chapter |
@@ -130,8 +132,11 @@ At the end of each milestone, run the `spec-reviewer` agent against this file an
 
 | # | Question | Notes |
 |---|---|---|
-| O1 | Which G2P (text-to-phonemes) for Kokoro? | misaki (Kokoro's own, Apache-2.0) wants spaCy plus a model for English, which costs installer size. espeak-ng via phonemizer is GPL-3.0, which is fine for us. Decide in M0 by size and quality. |
-| O2 | GPL-3.0-only or GPL-3.0-or-later? | `pyproject.toml` currently says `GPL-3.0-or-later`. Confirm. |
-| O3 | Pronunciation file format | Plain text that people can share and edit by hand: TSV or TOML. |
+| O1 | Which G2P (text-to-phonemes) for Kokoro? | misaki (Kokoro's own, Apache-2.0) uses spaCy's grammar tagging to choose between heteronyms ("polish/Polish", "read/read", "lead/lead"); espeak-ng via phonemizer (GPL-3.0, fine for us) mostly can't. spaCy plus its English model is what the extra installer size buys. Decide in M0 with the six `het-*` rows of `tests/voice/sentences.tsv`. |
 | O4 | Default Kokoro voice and speed | Pick after the A/B listening in M0. |
-| O5 | Where models, caches and settings live on disk | Per-user data directory (platformdirs), with a setting to move the cache. |
+
+Resolved, 2026-10-09:
+
+- **O2, license variant:** GPL-3.0-or-later (D1).
+- **O3, pronunciation file format:** TSV, BOM accepted (D15).
+- **O5, disk locations:** platformdirs, with a capped render cache (D26).

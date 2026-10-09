@@ -1,0 +1,45 @@
+# Lint, tests and license check on every pull request and every push to main.
+# Branch protection on main requires both jobs below to pass, by name:
+#   "checks (windows-latest)" and "checks (ubuntu-22.04)".
+# Renaming the job or changing the matrix means updating branch protection too.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-22.04 matches the Linux release build (oldest supported glibc).
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Formatting
+        run: uv run ruff format --check .
+
+      - name: Tests
+        run: uv run pytest -m "not slow"
+
+      - name: Licenses
+        run: uv run python tools/check_licenses.py
