@@ -38,13 +38,18 @@ def main() -> int:
         encoding="utf-8",
         errors="replace",
     )
-    if result.returncode in (0, NO_TESTS_COLLECTED):
+    if result.returncode == 0:
         return 0
 
     tail = "\n".join((result.stdout + result.stderr).strip().splitlines()[-40:])
+    if result.returncode == NO_TESTS_COLLECTED:
+        # The repo always has fast tests, so collecting none means discovery broke.
+        problem = "pytest collected no fast tests (test discovery is broken)"
+    else:
+        problem = "Fast tests are failing"
     sys.stderr.write(
-        "Fast tests are failing, so the task isn't done. Fix them, or if you can't, tell the "
-        "user plainly which tests fail and why.\n\n" + tail + "\n"
+        f"{problem}, so the task isn't done. Fix it, or if you can't, tell the user plainly "
+        "what fails and why.\n\n" + tail + "\n"
     )
     return 2
 
