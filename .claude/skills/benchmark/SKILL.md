@@ -25,6 +25,8 @@ uv run python tools/benchmark.py --variants fp32 int8 --provider cpu
 
 If `tools/benchmark.py` doesn't exist yet, this is milestone M0 work. Build it to the contract above, and add any packages it needs through the `add-dependency` skill (onnxruntime, plus the G2P chosen for open question O1 in SPEC.md).
 
+The tool reads `tests/voice/sentences.tsv` **by default**; it has no option for that path. Never put the path on the command line. The shell guard blocks commands that run `python` and name that protected file, because it can't tell a read from a write.
+
 ## Log
 
 Append one row per variant to `benchmarks/history.csv` (committed). Columns:

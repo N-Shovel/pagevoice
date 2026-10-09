@@ -18,5 +18,30 @@ tests/corpus/.downloads/
 # Benchmark audio (history.csv is committed, the audio is not)
 benchmarks/out/
 
+# Models, voices and audio. Anything committed to a public repo stays in its
+# history unless the history is rewritten, so these never go in.
+*.onnx
+*.bin
+*.wav
+*.flac
+*.mp3
+*.m4a
+*.m4b
+
+# Binaries: ffmpeg (built in CI into packaging/ffmpeg/out/), installers, libraries.
+# A bare "ffmpeg" pattern would also hide the packaging/ffmpeg/ build scripts.
+packaging/ffmpeg/out/
+**/bin/ffmpeg
+**/bin/ffprobe
+*.exe
+*.dll
+*.so
+*.dylib
+*.AppImage
+
+# Secrets
+.env
+.env.*
+
 # Personal Claude Code overrides
 .claude/settings.local.json
