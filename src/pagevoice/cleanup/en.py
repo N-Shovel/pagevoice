@@ -19,6 +19,8 @@ CAPTION = re.compile(r"^\s*(?:fig(?:ure)?\.?|table|plate|illustration)\s+[\dIVXL
 # over several blank-line-separated blocks.
 ILLUSTRATION_START = re.compile(r"^\s*\[Illustrations?\b", re.I)
 
+CONTENTS = re.compile(r"^\s*(?:table of )?contents\.?\s*$", re.I)
+
 GUTENBERG_START = re.compile(r"^\s*\*{3}\s*START OF (?:THE|THIS) PROJECT GUTENBERG", re.I)
 GUTENBERG_END = re.compile(r"^\s*\*{3}\s*END OF (?:THE|THIS) PROJECT GUTENBERG", re.I)
 GUTENBERG_FIELD = re.compile(r"^(Title|Author|Language):\s*(.+)$", re.M)

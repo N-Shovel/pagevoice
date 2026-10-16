@@ -22,7 +22,7 @@ PyTorch makes the installer gigabytes. Ruff bans `import torch`. An optional GPU
 `pagevoice` (engine and small CLI) never imports Qt. `pagevoice_gui` is just one way to drive it. This is enforced by `tests/test_architecture.py`.
 
 ### D5. No AGPL libraries: no PyMuPDF, no EbookLib (2026-10-09)
-Both are AGPL. Use pypdfium2 or pdfplumber for PDFs. Parse EPUB ourselves, since it's just a zip of XHTML files plus an OPF manifest. Ruff bans `fitz`, `pymupdf` and `ebooklib`, and `tools/check_licenses.py` fails on any AGPL, non-commercial or unknown license.
+Both are AGPL. Use pypdfium2 or pdfplumber for PDFs (pdfplumber chosen in M1, D32). Parse EPUB ourselves, since it's just a zip of XHTML files plus an OPF manifest. Ruff bans `fitz`, `pymupdf` and `ebooklib`, and `tools/check_licenses.py` fails on any AGPL, non-commercial or unknown license.
 
 ### D6. Inputs in v1: EPUB, text PDFs, TXT (2026-10-09)
 - **No OCR.** Detect scanned PDFs (no text layer) and say so plainly instead of reading out garbage.
@@ -178,6 +178,22 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
 
 *Provisional:* naturalness can't be judged from numbers; the owner picks after listening.
 
+### D32. How M1 reads and cleans books (2026-10-16)
+- **Document model** (`src/pagevoice/document.py`): a book is chapters of paragraphs, and a paragraph is a list of spans. A removed span keeps its text, reason and location (page and position, or EPUB file). Restoring it is a flag, so the review screen needs no second copy of the text.
+- **PDF extraction uses pdfplumber** (MIT, built on pdfminer.six and pypdfium2), because it gives each word's font size and position. Font size and position are what headers, footnotes and superscript markers are found by. pypdfium2 is only used for bookmarks.
+- **Removal reasons beyond the spec:**
+  - `contents` (tables of contents)
+  - `boilerplate` (Project Gutenberg licence text, publishers' imprint and colophon pages)
+  - `hyphen` (a line-break hyphen taken out when a word is rejoined)
+  - `multi_column`
+  - All are restorable like the others.
+- **Multi-column pages** (D14) are flagged, and their text is kept as `multi_column` removals. Column-interleaved text is never read unless the user restores it. Detection looks for a vertical channel of white space that at most one line in ten crosses, with real text on both sides.
+- **Paragraph breaks in PDFs** need the previous line to end a sentence, or a blank line between them. The text layers of OCR'd scans shift words and guess font sizes, so indents alone are too noisy.
+- **Chapters from text patterns** (D13) need a larger font as well. A scan whose OCR layer gives every line the same size therefore comes out as one chapter, and the user splits it in review.
+- **The golden corpus** holds public books by checksum, plus trap PDFs made by `tools/make_trap_pdfs.py`. That script typesets known text, so its candidate pages come from the source text, not from PageVoice's output.
+
+*Why:* nothing is deleted silently (rule 2), and a wrong guess costs the user a click in review, not a garbled audiobook.
+
 ---
 
 ## Dependency log
@@ -201,3 +217,5 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-16 | espeakng-loader | MIT (bundles espeak-ng, GPL-3.0+) | runtime | Ships the espeak-ng library; metadata empty, so it's in `REVIEWED` |
 | 2026-10-16 | psutil | BSD-3-Clause | dev | Peak RAM in the benchmark on Windows |
 | 2026-10-16 | faster-whisper | MIT | roundtrip | Transcribes rendered audio for the round-trip check; never shipped. The whole group (94 packages, including av, ctranslate2, tokenizers) passed `check_licenses.py` with `--group roundtrip`; CI checks only the default groups |
+| 2026-10-16 | pdfplumber | MIT | runtime | PDF words with font size and position (D5, D32); pulls in pdfminer.six (MIT), pypdfium2 (BSD-3/Apache-2.0), Pillow (MIT-CMU) |
+| 2026-10-16 | reportlab | BSD | dev | Typesets the trap PDFs in `tools/make_trap_pdfs.py`; never shipped |

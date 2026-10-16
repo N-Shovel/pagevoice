@@ -44,5 +44,19 @@ jobs:
       - name: Tests
         run: uv run pytest -m "not slow"
 
+      # Golden corpus: public books are downloaded by checksum (never committed) and
+      # cached. Books that can't be fetched are skipped by the tests, not failed.
+      - name: Cache corpus books
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/corpus/.downloads
+          key: corpus-${{ hashFiles('tests/corpus/*/*/book.toml') }}
+
+      - name: Golden corpus
+        shell: bash
+        run: |
+          uv run python tools/corpus.py fetch || echo "::warning::some corpus books could not be fetched; their tests will skip"
+          uv run pytest tests/corpus
+
       - name: Licenses
         run: uv run python tools/check_licenses.py

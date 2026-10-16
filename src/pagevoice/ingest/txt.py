@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+from pagevoice.cleanup.chapters import finish_chapters
 from pagevoice.cleanup.language import rules_for
 from pagevoice.cleanup.text import fix_characters, join_lines, word_counts
 from pagevoice.document import Book, Chapter, Location, Paragraph, Reason, Span
@@ -78,6 +79,10 @@ def read_txt(path: Path, *, language: str = "en") -> Book:
             paragraph = Paragraph.removed(block.strip(), Reason.CAPTION, location)
             (current.paragraphs if current else front).append(paragraph)
             continue
+        if rules.CONTENTS.match(block):
+            paragraph = Paragraph.removed(block.strip(), Reason.CONTENTS, location)
+            (current.paragraphs if current else front).append(paragraph)
+            continue
         block = _EMPHASIS.sub(r"\1", block)
         lines = [(line, location) for line in block.split("\n")]
         single = " ".join(line.strip() for line in block.split("\n")).strip()
@@ -91,43 +96,3 @@ def read_txt(path: Path, *, language: str = "en") -> Book:
 
     book.chapters = finish_chapters(chapters, front, book.title, rules)
     return book
-
-
-def finish_chapters(
-    chapters: list[Chapter], front: list[Paragraph], title: str, rules
-) -> list[Chapter]:
-    """Tidy heading-only chapters and put text before the first heading in front matter.
-
-    A run of three or more heading-only chapters is a table of contents: it joins the
-    front matter. A lone heading-only chapter ("BOOK II" before "CHAPTER I") is folded
-    into the chapter after it.
-    """
-    out: list[Chapter] = []
-    run: list[Chapter] = []
-
-    def flush_run(next_chapter: Chapter | None) -> None:
-        if len(run) >= 3 or next_chapter is None:
-            target = out[-1].paragraphs if out else front
-            for empty in run:
-                target.extend(empty.paragraphs)
-        elif next_chapter is not None:
-            heads = [p for empty in run for p in empty.paragraphs]
-            next_chapter.paragraphs[:0] = heads
-            next_chapter.title = " ".join([*(e.title for e in run), next_chapter.title])
-        run.clear()
-
-    for chapter in chapters:
-        if all(p.kind == "heading" for p in chapter.paragraphs):
-            run.append(chapter)
-            continue
-        flush_run(chapter)
-        out.append(chapter)
-    flush_run(None)
-
-    if not out:
-        return [Chapter(title=title, paragraphs=front)]
-    if any(p.text for p in front):
-        out.insert(0, Chapter(title=rules.FRONT_MATTER_TITLE, paragraphs=front))
-    elif front:
-        out[0].paragraphs[:0] = front  # only removals (e.g. boilerplate): keep them
-    return out

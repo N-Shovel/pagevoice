@@ -39,7 +39,8 @@ BLOCK = {
 }  # fmt: skip
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 SKIP = {"head", "script", "style", "svg", "math", "title"}
-NOTE_TYPES = ("footnote", "endnote", "rearnote", "note")
+NOTE_TYPES = ("footnote", "endnote", "rearnote", "note")  # whole words: not "endnotes"
+DOC_NOTE_ROLES = {"doc-footnote", "doc-endnote"}
 # Project Gutenberg's licence header/footer, and publishers' imprint pages.
 BOILERPLATE_IDS = {"pg-header", "pg-footer", "pg-machine-header", "pg-start-separator"}
 BOILERPLATE_TYPES = ("imprint", "colophon", "copyright-page")
@@ -127,7 +128,7 @@ class _Extractor(HTMLParser):
         if attrs.get("id"):
             self.pending_ids.append(attrs["id"])
             info["id"] = attrs["id"]
-        if any(t in types for t in NOTE_TYPES) and "noteref" not in types:
+        if set(types.split()) & set(NOTE_TYPES) or set(types.split()) & DOC_NOTE_ROLES:
             info["note"] = True
         classes = (attrs.get("class") or "").lower()
         if tag == "table":
@@ -306,7 +307,8 @@ def read_epub(path: Path, *, language: str = "en") -> Book:
     )
 
     manifest = {}
-    for item in opf.find("opf:manifest", NS) or []:
+    manifest_element = opf.find("opf:manifest", NS)
+    for item in manifest_element if manifest_element is not None else []:
         manifest[item.get("id")] = {
             "path": _href_key(opf_path, item.get("href", ""))[0],
             "type": item.get("media-type", ""),
