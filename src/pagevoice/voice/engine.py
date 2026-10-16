@@ -53,6 +53,12 @@ class VoiceSetup:
             raise VoiceNotReady("The voice hasn't been downloaded yet.")
         return model, voice
 
+    def use_language(self, language: str) -> None:
+        """Read in this language from now on (a book's language, e.g. 'en-GB')."""
+        if language != self.language:
+            self.language = language
+            self._g2p = None
+
     def phonemes(self, text: str) -> str:
         if self._g2p is None:
             from pagevoice.voice.g2p import g2p_for

@@ -120,11 +120,16 @@ def save(path: Path, entries: list[Entry]) -> None:
 
 
 def merge(global_entries: list[Entry], book_entries: list[Entry]) -> list[Entry]:
-    """Per-book entries replace global ones for the same word (and case setting)."""
+    """Per-book entries replace global ones for the same word (and case setting).
+
+    Where their case settings differ, both stay, and the book entry wins wherever it
+    matches: it is applied first, and its placeholder stops the global one matching there.
+    """
     book_keys = {e.key() for e in book_entries}
     kept = [e for e in global_entries if e.key() not in book_keys]
-    # Longer words first, so "New York" wins over "York".
-    return sorted(kept + list(book_entries), key=lambda e: -len(e.word))
+    # Longer words first, so "New York" wins over "York". The sort is stable, so on equal
+    # length a book entry still comes before a global one.
+    return sorted(list(book_entries) + kept, key=lambda e: -len(e.word))
 
 
 _OPEN, _CLOSE, _BASE = "", "", 0xE100  # private-use characters

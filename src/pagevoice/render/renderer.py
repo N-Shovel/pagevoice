@@ -80,6 +80,7 @@ class Renderer:
         self.book_id = book_id
         self.settings = settings or RenderSettings()
         self.pronunciations = pronunciations or []
+        voice.use_language(book.language)  # e.g. British spelling and phonemes for en-GB
         self.items = self.plan()
 
     def plan(self) -> list[Item]:

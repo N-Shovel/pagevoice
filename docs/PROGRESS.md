@@ -5,7 +5,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Last updated:** 2026-10-16
 - **Milestone:** M2, speech (M0 and M1 done except the owner items below)
 - **Branch:** m2-speech
-- **State:** paused (usage, about 93%). The other states are: not started, working, waiting for owner, done.
+- **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
 ## Done

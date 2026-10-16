@@ -102,6 +102,25 @@ def test_one_failing_paragraph_does_not_stop_the_book(voice, cache):
     assert result.rendered == 3 and len(result.failed) == 1
 
 
+def test_book_language_reaches_the_g2p(cache, monkeypatch):
+    seen = []
+
+    def fake_g2p_for(language, backend=None):
+        seen.append(language)
+        return lambda text: text
+
+    class RealPhonemes(FakeVoice):
+        phonemes = VoiceSetup.phonemes
+
+    monkeypatch.setattr("pagevoice.voice.g2p.g2p_for", fake_g2p_for)
+    voice = RealPhonemes(manifest=load_manifest(PROPOSED))
+    voice.phonemes("warm up in US English")
+    b = book("Colour.")
+    b.language = "en-GB"
+    Renderer(b, voice, cache, book_id="b").run()
+    assert seen == ["en", "en-GB"]
+
+
 def test_notes_are_read_last_unless_dropped(voice, cache):
     b = book("Body.", notes=("1 A note.",))
     assert Renderer(b, voice, cache, book_id="b").items[-1].source == "1 A note."

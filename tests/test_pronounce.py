@@ -40,6 +40,16 @@ def test_book_entries_override_global():
     assert {e.word for e in applied.used} == {"darcy", "Leicester"}
 
 
+def test_book_entries_override_global_with_other_case_settings():
+    merged = merge([Entry("Darcy", "DAR-see", case_sensitive=True)], [Entry("darcy", "DAR-sy")])
+    applied = apply("Darcy and darcy.", merged)
+    assert applied.fill(applied.text) == "DAR-sy and DAR-sy."
+    # "Polish" is not "polish": the global entry still covers what the book entry doesn't.
+    merged = merge([Entry("polish", "POL-ish")], [Entry("Polish", "POLE-ish", case_sensitive=True)])
+    applied = apply("Polish polish.", merged)
+    assert applied.fill(applied.text) == "POLE-ish POL-ish."
+
+
 def test_phonemes_use_misaki_markup_and_survive_normalization():
     applied = apply("NASA hired Kokoro.", [Entry("Kokoro", phonemes="kˈOkəɹO")])
     spoken = applied.fill(normalize(applied.text))
