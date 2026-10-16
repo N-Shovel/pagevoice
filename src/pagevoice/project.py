@@ -11,6 +11,7 @@ import base64
 import hashlib
 import json
 import os
+import time
 import uuid
 from dataclasses import asdict
 from pathlib import Path
@@ -86,8 +87,22 @@ def save(book: Book, book_id: str, *, source: Path | None = None) -> Path:
     data["source"] = str(source) if source else None
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
+    _replace(tmp, path)
     return path
+
+
+def _replace(tmp: Path, path: Path, attempts: int = 20) -> None:
+    """os.replace, retried: on Windows it fails while anything (a reader, an antivirus
+    scan) has the target open, and that clears within moments."""
+    for attempt in range(attempts):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.05)
 
 
 def load(book_id: str) -> Book | None:

@@ -111,3 +111,20 @@ def test_book_id_is_the_file_content_not_its_name(tmp_path):
     assert project.book_id(a) == project.book_id(b)
     b.write_text("different", encoding="utf-8")
     assert project.book_id(a) != project.book_id(b)
+
+
+def test_save_retries_while_the_file_is_busy(tmp_path, monkeypatch):
+    """Windows refuses to replace a file another program has open; that passes quickly."""
+    monkeypatch.setenv("PAGEVOICE_PROJECTS_DIR", str(tmp_path))
+    real_replace, failures = project.os.replace, [PermissionError, PermissionError]
+
+    def flaky(src, dst):
+        if failures:
+            raise failures.pop()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(project.os, "replace", flaky)
+    monkeypatch.setattr(project.time, "sleep", lambda _s: None)
+    project.save(small_book(), "busy")
+    assert project.load("busy").chapters[0].title == "One"
+    assert not list(tmp_path.glob("*.tmp"))
