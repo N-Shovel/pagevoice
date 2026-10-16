@@ -3,8 +3,8 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-16
-- **Milestone:** M3, export (M2 in PR #6; M0 and M1 done except the owner items below)
-- **Branch:** m3-export (built on m2-speech)
+- **Milestone:** M3, export: ready to merge (PR #7). M0–M2 are done except the owner items below.
+- **Branch:** m3-export
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
@@ -41,22 +41,26 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The spec-reviewer's findings are fixed.
   - The resilient corpus fetch missed the merge; it's on `m2-speech`.
 
+- M2 (PR #6, merged by the owner):
+  - English normalizer, pronunciation lists, paragraph render cache, renderer, CLI `render`.
+  - The spec-review findings are fixed (D33).
+
 ## In progress
-- **M2: PR #6** from `m2-speech`. CI passed. The spec-review findings are fixed (D33). Waiting for the owner to merge.
-- **M3: draft PR #7** from `m3-export`, built on `m2-speech`, so it shows M2's commits until #6 merges.
-  - Done:
-    - The exporters (M4B with chapters, cover and tags; MP3 per chapter).
+- **M3: PR #7** from `m3-export`, ready to merge. All checks pass: CI, benchmark, and the `ffmpeg` workflow on Ubuntu 22.04 and Windows.
+  - What's in it:
+    - Bundled LGPL ffmpeg built in CI.
+    - The M4B and MP3 exporters.
     - CLI `pagevoice export BOOK --out book.m4b [--format mp3] [--keep-cache]`.
-    - `tests/test_export.py`: 16 unit tests with a fake ffmpeg, plus 2 real-encode tests that use mutagen.
-  - The spec-reviewer ran. Its 1 violation (cache never cleared after export) and 11 concerns are fixed; see D34.
-  - The first CI ffmpeg build failed as the reviewer predicted: `--disable-autodetect` dropped zlib, so the PNG decoder was missing ("dimensions not set" for the cover). zlib is now enabled, and `build.sh` fails if a needed component is missing.
-  - The ffmpeg workflow is rebuilding with that fix. There's no ffmpeg on the laptop, so the real-encode tests run only there.
-- **Fast tests:** 213 passed, 3 skipped.
+    - The spec-review fixes (D34).
+  - The real-encode tests passed on both OSes with the built ffmpeg. They check the tags, the audiobook media type, the cover, mono audio, duration, QuickTime and Nero chapters with start times, and the MP3 ID3 tags and cover.
+- **Fast tests:** 214 passed, 3 skipped.
 
 ## Next step
-1. Check the `ffmpeg` workflow on PR #7, on both OSes: the build, the component and LGPL checks, and the real M4B/MP3 tests (QuickTime and Nero chapters, cover, `stik`). Fix what fails.
-2. When it's green and #6 is merged: mark PR #7 ready.
-3. Then M4 (GUI), on a new branch from `main`. Don't start M5.
+1. After PR #7 merges: create `m4-gui` from `main` and start M4 (SPEC §12: import → review with dimmed removals, restore and chapter edits → render with progress, pause and resume → export, without blocking the UI).
+   - Adding PySide6 goes through the `add-dependency` skill, as the `gui` extra.
+   - `ensure_file` hashes the model, so it must not run on the UI thread.
+   - Export runs in a worker. Clear the cache only when the user is done editing (D34).
+2. Don't start M5.
 
 ## Waiting on the owner
 - **Model manifest:**
