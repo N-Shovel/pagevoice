@@ -76,11 +76,21 @@ class Paragraph:
 
 
 @dataclass
+class MergedTitle:
+    """Where a merged-in chapter began, so splitting there again restores its title."""
+
+    paragraph: int
+    title: str
+    start_page: int | None = None
+
+
+@dataclass
 class Chapter:
     title: str
     paragraphs: list[Paragraph] = field(default_factory=list)
     notes: list[Paragraph] = field(default_factory=list)  # footnotes, read at the end
     start_page: int | None = None
+    merged: list[MergedTitle] = field(default_factory=list)
 
     def readable(self, *, drop_notes: bool = False) -> list[str]:
         """The paragraphs to read, in order: title, body, then notes (D11)."""

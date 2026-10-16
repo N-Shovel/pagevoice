@@ -122,9 +122,17 @@ class EntryTable(QWidget):
             QMessageBox.warning(self, self.tr("Import pronunciations"), str(exc))
             return
         known = {e.key() for e in self._safe_entries()}
+        kept = 0
         for entry in imported:
-            if entry.key() not in known:
+            if entry.key() in known:
+                kept += 1
+            else:
                 self.add(entry)
+        if kept:
+            QMessageBox.information(self, self.tr("Import pronunciations"), self.tr(
+                "%n word(s) were already in this list, so they were kept as they are. Remove "
+                "them first to take the imported version.", "", kept
+            ))  # fmt: skip
 
     def export_file(self) -> None:
         try:

@@ -143,12 +143,18 @@ def test_removals_are_dimmed_and_restorable(window):
         review.chapters.setCurrentRow(row)
         if review._spans:
             break
-    ref, span = next(iter(review._spans.items()))
+    ref, (span, _block) = next(iter(review._spans.items()))
     assert span.removed and "line-through" in review.text.toHtml()
     review._hovered(QUrl(f"span:{ref}"))
     assert "Removed as" in review.hint.text()
+    document = review.text.document()
     review._anchor_clicked(QUrl(f"span:{ref}"))
+    assert review.text.document() is document  # restyled in place, not rebuilt
     assert span.restored and "brought back" in review.summary.text()
+    assert span.text.strip() in review.text.toPlainText()
+    review._anchor_clicked(QUrl(f"span:{ref}"))  # and back again
+    assert span.removed and "brought back" not in review.summary.text()
+    review._anchor_clicked(QUrl(f"span:{ref}"))
     window.session.save_now()
     book_id = window.session.book_id
     wait_until(lambda: (b := project.load(book_id)) and any(s.restored for s in b.removals))
@@ -178,6 +184,67 @@ def test_chapter_edits(window):
     assert review.chapters.currentRow() == 1
 
 
+def test_split_asks_for_a_title_when_there_is_no_heading(window, monkeypatch):
+    open_book(window, PDF)
+    review = window.review_page
+    review.chapters.setCurrentRow(2)
+    chapter = window.session.book.chapters[2]
+    plain = next(i for i, p in enumerate(chapter.paragraphs) if i and p.kind != "heading")
+    asked = []
+    monkeypatch.setattr(
+        "pagevoice_gui.review.QInputDialog.getText",
+        lambda *a, **k: asked.append(k.get("text")) or ("The Middle", True),
+    )
+    review.split(plain)
+    assert asked == ["Chapter 4"]
+    assert window.session.book.chapters[3].title == "The Middle"
+
+
+def test_long_chapters_are_shown_in_parts(window, tmp_path):
+    txt = tmp_path / "long.txt"
+    txt.write_text("\n\n".join(f"Paragraph number {n}." for n in range(450)), encoding="utf-8")
+    open_book(window, txt)
+    window.show_step(REVIEW)
+    review = window.review_page
+    assert review.parts_bar.isVisibleTo(review)
+    assert "Part 1 of 3" in review.part_label.text()
+    assert "Paragraph number 199." in review.text.toPlainText()
+    assert "Paragraph number 200." not in review.text.toPlainText()
+    review._turn(1)
+    assert "Paragraph number 200." in review.text.toPlainText()
+
+
+def test_wrongly_labelled_book_can_be_read_as_english(window, env, tmp_path, monkeypatch):
+    import pagevoice.ingest
+    from pagevoice.cleanup.language import LanguageNotSupported
+
+    calls, real_read_book = [], pagevoice.ingest.read_book
+
+    def fake_read_book(path, language=None):
+        calls.append(language)
+        if language is None:
+            raise LanguageNotSupported("French")
+        return real_read_book(path, language=language)
+
+    monkeypatch.setattr("pagevoice.ingest.read_book", fake_read_book)
+    txt = tmp_path / "book.txt"
+    txt.write_text("Title\n\nSome English text.\n", encoding="utf-8")
+    open_book(window, txt)
+    assert calls == [None, "en"] and window.session.book.language == "en"
+
+
+def test_unreadable_saved_review_is_reported(window, env, tmp_path):
+    txt = tmp_path / "book.txt"
+    txt.write_text("Title\n\nText.\n", encoding="utf-8")
+    book_id = project.book_id(txt)
+    project.projects_dir().mkdir(parents=True, exist_ok=True)
+    (project.projects_dir() / f"{book_id}.json").write_text("{broken", encoding="utf-8")
+    open_book(window, txt)
+    wait_until(lambda: env)
+    assert env[-1][0] == "information" and "couldn't be read" in env[-1][1][2]
+    assert (project.projects_dir() / f"{book_id}.json.bak").exists()
+
+
 def test_render_pause_resume_and_export(window, monkeypatch, tmp_path):
     fake_run = FakeRun()
     monkeypatch.setattr(audiobook, "run", fake_run)
@@ -202,12 +269,15 @@ def test_render_pause_resume_and_export(window, monkeypatch, tmp_path):
 
     keys = [i.key for i in page.renderer.items]
     page.target.setText(str(tmp_path / "out" / "book.m4b"))
-    page.free_cache.setChecked(True)
     page.start_export()
     wait_until(lambda: not page._busy)
     assert (tmp_path / "out" / "book.m4b").read_bytes() == b"audio"
     assert "Done" in page.export_status.text()
-    assert not any(page.cache.has(k) for k in keys)  # freed after export
+    assert all(page.cache.has(k) for k in keys)  # kept while the book may still change
+    assert page.free_button.isVisibleTo(page)
+    page.free_cache()
+    wait_until(lambda: "Freed" in page.export_status.text())
+    assert not any(page.cache.has(k) for k in keys)
 
 
 def test_export_refuses_unrendered_changes(window, monkeypatch, tmp_path):
@@ -250,6 +320,70 @@ def test_first_run_offers_the_download(window, monkeypatch):
     wait_until(lambda: not window.produce_page._busy)
 
 
+def test_download_is_busy_work_then_resumes_what_asked(window, monkeypatch):
+    downloaded = threading.Event()
+    state = {"ready": False}
+    monkeypatch.setattr(ReadyVoice, "ready", lambda self: state["ready"])
+
+    def download(self, progress=None, *, use_source=False):
+        assert use_source is False  # tests never pass the dev flag: our release only (D9)
+        assert window.produce_page.busy  # no second download, no quitting silently
+        progress(50, 100)
+        state["ready"] = True
+        downloaded.set()
+
+    monkeypatch.setattr(ReadyVoice, "download", download)
+    open_book(window, PDF)
+    window.produce_page.start_render()
+    wait_until(downloaded.is_set)
+    wait_until(lambda: "Everything is rendered" in window.produce_page.status.text(), 60)
+
+
+def test_damaged_download_gets_a_plain_message(window, env, monkeypatch):
+    from pagevoice.voice.download import ChecksumError
+
+    monkeypatch.setattr(ReadyVoice, "ready", lambda self: False)
+
+    def download(self, progress=None, *, use_source=False):
+        raise ChecksumError("kokoro.onnx from https://x doesn't match (sha256 abc)")
+
+    monkeypatch.setattr(ReadyVoice, "download", download)
+    open_book(window, PDF)
+    window.produce_page.start_render()
+    wait_until(lambda: any("damaged" in str(a) for _k, a in env))
+    assert not any("sha256" in str(a) for _k, a in env)
+
+
+def test_voices_are_shared_and_checked_once(window):
+    first = window.voice_factory("af_heart", "cpu")
+    assert window.voice_factory("af_heart", "cpu") is first
+    assert window.voice_factory("bm_george", "cpu") is not first
+
+
+def test_cache_cap_is_a_setting(window, monkeypatch):
+    from pagevoice_gui.settings_dialog import GB, SettingsDialog, cache_cap_bytes
+
+    dialog = SettingsDialog(window.cache, busy=False)
+    wait_until(lambda: "GB" in dialog.used.text())
+    dialog.cap.setValue(12)
+    dialog.accept()
+    assert window.cache.cap_bytes == 12 * GB and cache_cap_bytes() == 12 * GB
+
+
+def test_notes_setting_reaches_the_review(window, tmp_path):
+    from pagevoice.document import Book, Chapter, Paragraph
+    from pagevoice_gui.session import Session
+
+    book = Book("B", chapters=[Chapter("One", [Paragraph.plain("Body.")],
+                                       [Paragraph.plain("A note.", kind="note")])])  # fmt: skip
+    window.set_session(Session(book, "notes", tmp_path / "b.txt"))
+    window.show_step(REVIEW)
+    assert "read at the end" in window.review_page.text.toPlainText()
+    window.produce_page.read_notes.setChecked(False)
+    assert "not read" in window.review_page.text.toPlainText()
+    window.produce_page.read_notes.setChecked(True)
+
+
 def test_pronunciation_dialog_saves_both_lists(window, tmp_path):
     book_list, global_list = tmp_path / "book.tsv", tmp_path / "global.tsv"
     previews = []
@@ -263,6 +397,21 @@ def test_pronunciation_dialog_saves_both_lists(window, tmp_path):
     dialog.accept()
     assert [e.word for e in load(book_list)] == ["Hermione"]
     assert load(global_list)[0].case_sensitive
+
+
+def test_import_reports_words_already_listed(window, env, tmp_path, monkeypatch):
+    shared = tmp_path / "series.tsv"
+    shared.write_text("Darcy\tdar-see\nBingley\tbing-lee\n", encoding="utf-8")
+    dialog = PronunciationDialog(None, tmp_path / "g.tsv", lambda t, e: None)
+    dialog.global_table.add(Entry("Darcy", "dar-sy"))
+    monkeypatch.setattr(
+        "pagevoice_gui.pronunciations.QFileDialog.getOpenFileName",
+        lambda *a, **k: (str(shared), ""),
+    )
+    dialog.global_table.import_file()
+    words = [(e.word, e.sounds_like) for e in dialog.global_table.entries()]
+    assert words == [("Darcy", "dar-sy"), ("Bingley", "bing-lee")]
+    assert "already in this list" in env[-1][1][2]
 
 
 def test_pronunciation_rows_are_checked(window, tmp_path):

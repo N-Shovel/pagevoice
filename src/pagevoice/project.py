@@ -18,7 +18,16 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-from pagevoice.document import Book, Chapter, Location, PageFlag, Paragraph, Reason, Span
+from pagevoice.document import (
+    Book,
+    Chapter,
+    Location,
+    MergedTitle,
+    PageFlag,
+    Paragraph,
+    Reason,
+    Span,
+)
 
 FORMAT = 1
 
@@ -68,6 +77,7 @@ def from_dict(data: dict) -> Book:
                 [_paragraph(p) for p in c["paragraphs"]],
                 [_paragraph(p) for p in c["notes"]],
                 c["start_page"],
+                [MergedTitle(**m) for m in c.get("merged", [])],
             )
             for c in b["chapters"]
         ],
@@ -105,14 +115,40 @@ def _replace(tmp: Path, path: Path, attempts: int = 20) -> None:
             time.sleep(0.05)
 
 
+class SavedReviewUnreadable(RuntimeError):
+    """The saved review exists but can't be read (damaged, or from another version). It was
+    kept as a .bak file, so the user's edits aren't silently lost."""
+
+    def __init__(self, backup: Path) -> None:
+        super().__init__(
+            "Your saved review of this book couldn't be read, so the book was cleaned again "
+            f"from the original. The old review was kept as {backup}."
+        )
+        self.backup = backup
+
+
 def load(book_id: str) -> Book | None:
-    """The saved review state for this book, or None if there is none (or it's unreadable,
-    e.g. from another version: the book is then cleaned afresh)."""
+    """The saved review for this book, or None if there is none.
+
+    Raises SavedReviewUnreadable if there is one that can't be read. It's moved aside
+    first, so the next load starts fresh."""
     path = projects_dir() / f"{book_id}.json"
+    for attempt in range(20):
+        try:
+            text = path.read_text(encoding="utf-8")
+            break
+        except FileNotFoundError:
+            return None
+        except PermissionError:  # Windows, while a save is replacing the file
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
     try:
-        return from_dict(json.loads(path.read_text(encoding="utf-8")))
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+        return from_dict(json.loads(text))
+    except (ValueError, KeyError, TypeError) as exc:
+        backup = path.with_suffix(".json.bak")
+        _replace(path, backup)
+        raise SavedReviewUnreadable(backup) from exc
 
 
 def pronunciations_path(book_id: str) -> Path:

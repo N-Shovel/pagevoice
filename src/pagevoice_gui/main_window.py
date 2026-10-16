@@ -2,11 +2,13 @@
 
 import logging
 import tempfile
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QFileDialog,
     QHBoxLayout,
@@ -21,20 +23,26 @@ from PySide6.QtWidgets import (
 
 from pagevoice import project
 from pagevoice.audio import write_wav
+from pagevoice.cleanup.language import LanguageNotSupported
 from pagevoice.document import IngestError
 from pagevoice.pronounce.store import global_path
 from pagevoice.render.cache import RenderCache
 from pagevoice.render.renderer import speak
+from pagevoice.voice.engine import VoiceSetup
 from pagevoice.voice.kokoro import SAMPLE_RATE
 from pagevoice_gui import playback, tasks
-from pagevoice_gui.produce import ProducePage, VoiceFactory
+from pagevoice_gui.produce import ProducePage, VoiceFactory, VoiceUnavailable
 from pagevoice_gui.pronunciations import PronunciationDialog
 from pagevoice_gui.review import ReviewPage
-from pagevoice_gui.session import Session, open_book
+from pagevoice_gui.session import Opened, Session, open_book
+from pagevoice_gui.settings_dialog import SettingsDialog, cache_cap_bytes
 
 log = logging.getLogger(__name__)
 OPEN, REVIEW, PRODUCE = range(3)
-BOOK_FILTER = "Books (*.epub *.pdf *.txt);;All files (*)"
+
+
+class VoiceNotDownloaded(RuntimeError):
+    """A preview was asked for before the first-run download."""
 
 
 class OpenPage(QWidget):
@@ -64,23 +72,33 @@ class MainWindow(QMainWindow):
         voice_factory: VoiceFactory,
         voices: list[str],
         cache: RenderCache | None = None,
+        *,
+        dml: bool = False,
+        allow_upstream_download: bool = False,
     ) -> None:
         super().__init__()
         self.setWindowTitle("PageVoice")
         self.resize(1100, 760)
         self.setAcceptDrops(True)
-        self.voice_factory = voice_factory
+        self._voices: dict[tuple[str, str], VoiceSetup] = {}
+        self._voices_lock = threading.Lock()
+        self._raw_factory = voice_factory
         self.session: Session | None = None
-        self._busy = False
+        self._busy = self._opening = False
+        self.cache = cache or RenderCache(cap_bytes=cache_cap_bytes())
 
         self.open_page = OpenPage(self.choose_book)
         self.review_page = ReviewPage()
-        self.produce_page = ProducePage(voice_factory, voices, cache or RenderCache())
+        self.produce_page = ProducePage(
+            self.voice_factory, voices, self.cache,
+            dml=dml, allow_upstream_download=allow_upstream_download,
+        )  # fmt: skip
         self.review_page.continue_clicked.connect(lambda: self.show_step(PRODUCE))
         self.review_page.clean_again_clicked.connect(self.clean_again)
         self.produce_page.review_clicked.connect(lambda: self.show_step(REVIEW))
         self.produce_page.pronunciations_clicked.connect(self.edit_pronunciations)
         self.produce_page.busy_changed.connect(self._set_busy)
+        self.produce_page.notes_setting_changed.connect(self.review_page.refresh)
 
         self.stack = QStackedWidget()
         for page in (self.open_page, self.review_page, self.produce_page):
@@ -107,11 +125,22 @@ class MainWindow(QMainWindow):
         self.open_action.triggered.connect(self.choose_book)
         pronunciations = QAction(self.tr("&Pronunciations…"), self)
         pronunciations.triggered.connect(self.edit_pronunciations)
+        settings = QAction(self.tr("&Settings…"), self)
+        settings.triggered.connect(self.edit_settings)
         quit_action = QAction(self.tr("&Quit"), self, shortcut=QKeySequence.Quit)
         quit_action.triggered.connect(self.close)
-        for action in (self.open_action, pronunciations, quit_action):
+        for action in (self.open_action, pronunciations, settings, quit_action):
             file_menu.addAction(action)
         self.show_step(OPEN)
+
+    def voice_factory(self, name: str, provider: str) -> VoiceSetup:
+        """One voice per (name, provider), shared by rendering and previews: its checksum
+        is checked once, and the model is loaded once (VoiceSetup is thread-safe)."""
+        with self._voices_lock:
+            key = (name, provider)
+            if key not in self._voices:
+                self._voices[key] = self._raw_factory(name, provider)
+            return self._voices[key]
 
     # --- steps ---
 
@@ -125,11 +154,12 @@ class MainWindow(QMainWindow):
         self._update_steps()
 
     def _update_steps(self) -> None:
-        has_book = self.session is not None
-        self.steps.button(OPEN).setEnabled(not self._busy)
-        self.steps.button(REVIEW).setEnabled(has_book and not self._busy)
-        self.steps.button(PRODUCE).setEnabled(has_book)
-        self.open_action.setEnabled(not self._busy)
+        has_book, free = self.session is not None, not (self._busy or self._opening)
+        self.steps.button(OPEN).setEnabled(free)
+        self.steps.button(REVIEW).setEnabled(has_book and free)
+        self.steps.button(PRODUCE).setEnabled(has_book and not self._opening)
+        self.open_action.setEnabled(free)
+        self.open_page.button.setEnabled(free)
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -138,29 +168,48 @@ class MainWindow(QMainWindow):
     # --- opening ---
 
     def choose_book(self) -> None:
-        if self._busy:
+        if self._busy or self._opening:
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Open a book"), "", self.tr(BOOK_FILTER)
+            self, self.tr("Open a book"), "", self.tr("Books (*.epub *.pdf *.txt);;All files (*)")
         )
         if path:
             self.load_book(Path(path))
 
-    def load_book(self, path: Path) -> None:
+    def load_book(self, path: Path, language: str | None = None) -> None:
+        if self._busy or self._opening:
+            return
+        path = Path(path).resolve()
         if self.session is not None:
             self.session.save_now()
+        self._opening = True
         self.show_step(OPEN)
-        self.open_page.button.setEnabled(False)
-        self.open_page.status.setText(self.tr("Opening %1…").replace("%1", path.name))
+        steps = {"hashing": self.tr("Opening %1…").replace("%1", path.name),
+                 "cleaning": self.tr("Cleaning up %1…").replace("%1", path.name)}  # fmt: skip
+        self.open_page.status.setText(steps["hashing"])
 
-        def done(result) -> None:
-            book_id, book, resumed = result
-            self.open_page.button.setEnabled(True)
-            self.set_session(Session(book, book_id, path, resumed=resumed))
+        def done(opened: Opened) -> None:
+            self._opening = False
+            self.set_session(Session(opened.book, opened.book_id, path, resumed=opened.resumed))
+            if opened.notice:
+                QMessageBox.information(self, self.tr("Open a book"), opened.notice)
 
         def failed(exc) -> None:
-            self.open_page.button.setEnabled(True)
-            if isinstance(exc, IngestError):
+            self._opening = False
+            self._update_steps()
+            if isinstance(exc, LanguageNotSupported) and language is None:
+                answer = QMessageBox.question(
+                    self,
+                    self.tr("Open a book"),
+                    self.tr("This book is marked as %1. PageVoice reads English only for now. "
+                            "If the book really is in English, read it as English anyway?")
+                    .replace("%1", exc.name),
+                )  # fmt: skip
+                if answer == QMessageBox.Yes:
+                    self.load_book(path, language="en")
+                    return
+                message = str(exc)
+            elif isinstance(exc, IngestError):
                 message = str(exc)  # already plain language
             else:
                 log.error("Opening %s failed", path, exc_info=exc)
@@ -168,8 +217,13 @@ class MainWindow(QMainWindow):
             self.open_page.status.setText(message)
             QMessageBox.warning(self, self.tr("Open a book"), message)
 
-        tasks.run_task(lambda report: open_book(path, report), on_done=done, on_failed=failed,
-                       on_progress=self.open_page.status.setText)  # fmt: skip
+        tasks.run_task(
+            lambda report: open_book(path, report, language=language),
+            on_done=done,
+            on_failed=failed,
+            on_progress=lambda step: self.open_page.status.setText(steps.get(step, step)),
+        )
+        self._update_steps()
 
     def set_session(self, session: Session) -> None:
         self.session = session
@@ -185,14 +239,19 @@ class MainWindow(QMainWindow):
         )
 
     def clean_again(self) -> None:
-        if self.session is None:
+        if self.session is None or self._busy:
             return
-        project.forget(self.session.book_id)
-        source, self.session = self.session.source, None
-        self.load_book(source)
+        session, self.session = self.session, None
+        book_id, source = session.book_id, session.source
+
+        def forget(_report) -> None:
+            with session.lock:  # after any save still in flight
+                project.forget(book_id)
+
+        tasks.run_task(forget, on_done=lambda _r: self.load_book(source))
 
     def dragEnterEvent(self, event) -> None:
-        if event.mimeData().hasUrls() and not self._busy:
+        if event.mimeData().hasUrls() and not (self._busy or self._opening):
             event.acceptProposedAction()
 
     def dropEvent(self, event) -> None:
@@ -200,7 +259,7 @@ class MainWindow(QMainWindow):
         if urls:
             self.load_book(Path(urls[0].toLocalFile()))
 
-    # --- pronunciations ---
+    # --- pronunciations and settings ---
 
     def edit_pronunciations(self) -> None:
         book_path = self.session.pronunciations_path if self.session else None
@@ -208,31 +267,35 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self.produce_page.plan_changed()
 
+    def edit_settings(self) -> None:
+        SettingsDialog(self.cache, self._busy, self).exec()
+
     def preview(self, text: str, entries) -> None:
-        voice_name = self.produce_page.voice.currentData()
-        speed = self.produce_page.speed.value()
+        page = self.produce_page
+        voice_name, speed = page.voice.currentData(), page.speed.value()
+        provider = "dml" if page.use_gpu.isChecked() else "cpu"
         language = self.session.book.language if self.session else "en"
+        factory = self.voice_factory
 
         def work(_report) -> Path:
-            voice = self.voice_factory(voice_name, "cpu")
+            voice = factory(voice_name, provider)
             if not voice.ready():
-                raise RuntimeError("voice not downloaded")
+                raise VoiceNotDownloaded
             audio = speak(text, voice, language=language, pronunciations=entries, speed=speed)
             path = Path(tempfile.gettempdir()) / "pagevoice-preview.wav"
             write_wav(path, audio, SAMPLE_RATE)
             return path
 
         def failed(exc) -> None:
-            log.error("Preview failed", exc_info=exc)
-            QMessageBox.information(
-                self,
-                self.tr("Preview"),
-                self.tr(
-                    "The preview needs the voice. Press Render once to download it, then try again."
-                )
-                if "not downloaded" in str(exc)
-                else str(exc),
-            )
+            if isinstance(exc, VoiceNotDownloaded):
+                message = self.tr("The preview needs the voice. Press Render once to download "
+                                  "it, then try again.")  # fmt: skip
+            elif isinstance(exc, VoiceUnavailable):
+                message = str(exc)
+            else:
+                log.error("Preview failed", exc_info=exc)
+                message = self.tr("The preview couldn't be made. Details are in the log.")
+            QMessageBox.information(self, self.tr("Preview"), message)
 
         def done(path: Path) -> None:
             try:
@@ -249,16 +312,18 @@ class MainWindow(QMainWindow):
             answer = QMessageBox.question(
                 self,
                 self.tr("Quit PageVoice"),
-                self.tr(
-                    "PageVoice is still working. Stop and quit? Rendering carries on from here "
-                    "next time."
-                ),
-            )
+                self.tr("PageVoice is still working. Stop and quit? Rendering carries on from "
+                        "here next time."),
+            )  # fmt: skip
             if answer != QMessageBox.Yes:
                 event.ignore()
                 return
             self.produce_page.stop_work()
         if self.session is not None:
-            project.save(self.session.book, self.session.book_id, source=self.session.source)
-        tasks.wait_for_all(15000)
+            self.session.save_now()  # through the ordered worker save
+        # The window goes away at once; workers get a moment to stop and finish saving.
+        self.hide()
+        QApplication.processEvents()
+        if not tasks.wait_for_all(15000):
+            log.warning(QCoreApplication.translate("MainWindow", "Some work didn't stop in time"))
         event.accept()

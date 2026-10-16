@@ -26,6 +26,13 @@ def providers(provider: str = "cpu") -> list[str]:
     raise ValueError(f"Unknown provider {provider!r} (cpu or dml)")
 
 
+def dml_available() -> bool:
+    """True if this onnxruntime build can use DirectML (Windows graphics cards)."""
+    import onnxruntime
+
+    return "DmlExecutionProvider" in onnxruntime.get_available_providers()
+
+
 def tokenize(phonemes: str) -> list[int]:
     ids = [VOCAB[c] for c in phonemes if c in VOCAB]
     dropped = {c for c in phonemes if c not in VOCAB}

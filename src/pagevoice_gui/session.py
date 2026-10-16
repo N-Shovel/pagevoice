@@ -14,18 +14,20 @@ log = logging.getLogger(__name__)
 
 
 class Session(QObject):
-    """One open book. edited fires after any review edit (the render plan is then stale)."""
+    """One open book. edited fires after any review edit (the render plan is then stale).
+
+    lock guards the book: review edits (tiny) take it on the UI thread, and saves take it on
+    a worker while they copy the book. A save copies and writes under the lock, so saves
+    land in the order they started and the newest edits are always the ones on disk."""
 
     edited = Signal()
 
     def __init__(self, book: Book, book_id: str, source: Path, *, resumed: bool = False) -> None:
         super().__init__()
         self.book, self.book_id, self.source, self.resumed = book, book_id, source, resumed
+        self.lock = threading.RLock()
         self._save_timer = QTimer(self, singleShot=True, interval=400)
         self._save_timer.timeout.connect(self.save_now)
-        self._save_lock = threading.Lock()  # one save at a time
-        self._made = 0  # snapshots taken
-        self._written = 0  # newest snapshot on disk: an older one never overwrites it
 
     def changed(self) -> None:
         """Call after every edit: saves soon (batched), and tells the render page."""
@@ -34,17 +36,11 @@ class Session(QObject):
 
     def save_now(self) -> None:
         self._save_timer.stop()
-        data = project.to_dict(self.book)  # snapshot on the UI thread: edits can't race it
-        book_id, source = self.book_id, self.source
-        self._made += 1
-        number = self._made
+        book, book_id, source, lock = self.book, self.book_id, self.source, self.lock
 
         def write(_report):
-            book = project.from_dict(data)
-            with self._save_lock:
-                if number > self._written:
-                    project.save(book, book_id, source=source)
-                    self._written = number
+            with lock:
+                project.save(book, book_id, source=source)
 
         run_task(write, on_failed=lambda exc: log.error("Saving the review failed: %s", exc))
 
@@ -53,15 +49,30 @@ class Session(QObject):
         return project.pronunciations_path(self.book_id)
 
 
-def open_book(path: Path, report) -> tuple[str, Book, bool]:
+class Opened:
+    """What opening a book produced, handed from the worker to the UI thread."""
+
+    def __init__(self, book_id: str, book: Book, resumed: bool, notice: str = "") -> None:
+        self.book_id, self.book, self.resumed, self.notice = book_id, book, resumed, notice
+
+
+def open_book(path: Path, report, *, language: str | None = None) -> Opened:
     """Worker side of opening a book: hash it, then reuse its saved review or clean it.
-    Returns (book_id, book, resumed); the Session itself is made on the UI thread."""
+
+    language overrides the book's own label (e.g. an English book marked as French); the
+    GUI passes it only after asking. Otherwise LanguageNotSupported reaches the caller."""
     from pagevoice.ingest import read_book
 
-    report("Reading the book…")
+    report("hashing")
     book_id = project.book_id(path)
-    saved = project.load(book_id)
-    if saved is not None:
-        return book_id, saved, True
-    report("Cleaning up the text…")
-    return book_id, read_book(path), False
+    notice = ""
+    if language is None:
+        try:
+            saved = project.load(book_id)
+        except project.SavedReviewUnreadable as exc:
+            log.warning("%s", exc)
+            saved, notice = None, str(exc)
+        if saved is not None:
+            return Opened(book_id, saved, True)
+    report("cleaning")
+    return Opened(book_id, read_book(path, language=language), False, notice)

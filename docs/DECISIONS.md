@@ -256,6 +256,35 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
   - Both exporters check for ffmpeg before preparing any audio.
 - **Cache after export (D26):** the exporters clear the book's render cache only when asked (`clear_cache`). The CLI clears it by default, and `--keep-cache` keeps it. The GUI (M4) keeps it while the book is still being edited.
 
+### D35. How the M4 desktop app works (2026-10-16)
+- **Flow:** Open → Review → Voice and export. PDFs open in review; EPUB and TXT go straight to voice and export, and review is one click away (SPEC §4).
+- **Saved review** (`pagevoice/project.py`):
+  - What's saved: the whole cleaned book as JSON in the per-user data folder, including every span with its reason, location and restored flag, and chapter edits.
+  - It's keyed by a hash of the source file, so a changed file starts fresh. It's saved in the background after edits and comes back when the same file is reopened, which keeps the render cache keys valid. The CLI uses it too.
+  - A saved review that can't be read is kept as `.bak`, and the user is told.
+  - Per-book pronunciation lists sit next to it.
+- **Chapter edits** (`pagevoice/edit.py`):
+  - A merge remembers the second chapter's title and start page, so splitting at the same place restores them.
+  - Otherwise a split takes the heading's text or asks for a title. The engine never makes up titles, because that would be English text outside a language module.
+- **Threads** (`pagevoice_gui/tasks.py`):
+  - Slow work runs as tasks on Qt's thread pool (QThreadPool threads are QThreads). Results come back as queued signals to a relay object on the UI thread.
+  - Covered: opening, cleaning, hashing, checking the voice files, planning, rendering, exporting, downloading, previews, saving, measuring the cache.
+  - The book is guarded by a lock that review edits and saves share. Review edits are locked while a render or export runs.
+  - **Provisional:** the GUI rule says "QThread or a worker object moved to one"; this is the same mechanism through the pool. The owner should confirm, and the rule's wording should be updated to match.
+- **Big books:** review shows long chapters in parts of 200 paragraphs. A restore click restyles only the clicked text, and only the edited chapter's word count is recomputed.
+- **Voice:**
+  - One `VoiceSetup` per voice is shared by rendering and previews. Its checksum is checked once per run, and G2P and synthesis take turns under a lock.
+  - DirectML is offered only when the installed onnxruntime has it.
+- **First-run download:** it counts as busy work, in a modal dialog with cancel. Afterwards it continues whatever asked for it.
+  - It always comes from our release, verified against the manifest. The upstream source is only for a development run (`--dev-proposed-manifest`, never in a frozen build).
+  - A damaged download gets a plain message.
+- **Cache:**
+  - The size cap is a setting (File → Settings, default 5 GB), which also shows the size in use and can empty the cache.
+  - After an export the book's audio is kept, and a "Free this book's rendered audio" button appears.
+- **Language:** a book labelled as another language can be read as English after asking (D32). The book's language is shown on the voice page.
+- **Preview playback:** PySide6-Essentials has no QtMultimedia, so previews play with `winsound` on Windows, and `pw-play`, `paplay` or `aplay` on Linux.
+- **Errors:** never shown as a traceback. They're logged to the per-user log folder and shown as a short message.
+
 ---
 
 ## Dependency log
