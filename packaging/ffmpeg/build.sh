@@ -93,7 +93,7 @@ cp "$WORK/lame-$LAME_VERSION/COPYING" "$OUT/licenses/lame-COPYING"
 # component whose dependency is missing).
 for need in "decoders png" "decoders mjpeg" "decoders flac" "encoders aac"   "encoders libmp3lame" "muxers ipod" "muxers mp3"; do
   set -- $need
-  if ! "$OUT/bin/ffmpeg$EXE" -hide_banner "-$1" | grep -qE "^ [A-Z.]+ +$2( |$)"; then
+  if ! "$OUT/bin/ffmpeg$EXE" -hide_banner "-$1" | grep -qE "^ *[A-Z.]+ +$2( |$)"; then
     echo "ffmpeg was built without $2 ($1); refusing to ship it" >&2
     exit 1
   fi
