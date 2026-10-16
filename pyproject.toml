@@ -21,8 +21,17 @@ dependencies = [
     "spacy>=3.8,<3.9",
 ]
 
+[project.optional-dependencies]
+# The desktop app (D2). PySide6-Essentials: QtCore, QtGui and QtWidgets without the add-ons.
+gui = [
+    "PySide6-Essentials>=6.8",
+]
+
 [project.scripts]
 pagevoice = "pagevoice.cli:main"
+
+[project.gui-scripts]
+pagevoice-gui = "pagevoice_gui.app:main"
 
 [dependency-groups]
 dev = [

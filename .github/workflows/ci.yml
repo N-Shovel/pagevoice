@@ -32,8 +32,12 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Qt system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
       - name: Install
-        run: uv sync --locked
+        run: uv sync --locked --extra gui  # GUI tests and its licences too
 
       - name: Lint
         run: uv run ruff check .
