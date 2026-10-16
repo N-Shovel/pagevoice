@@ -3,8 +3,8 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-16
-- **Milestone:** M2, speech (M0 and M1 done except the owner items below)
-- **Branch:** m2-speech
+- **Milestone:** M3, export (M2 in PR #6; M0 and M1 done except the owner items below)
+- **Branch:** m3-export (built on m2-speech)
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
@@ -42,18 +42,21 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The resilient corpus fetch missed the merge; it's on `m2-speech`.
 
 ## In progress
-- **M2 on `m2-speech`:** the spec-review findings are all fixed (2 violations, 14 concerns). Details are in D33. Fast tests: 197 passed, 1 skipped. Slow tests: 4 passed.
-  - Respellings are now lowercased before the G2P: misaki spelled capital syllables as letters ("DAR-see" became "D A R see") and ignores capitals for stress anyway.
-  - The M3 work-in-progress (1c56c79) is reverted on this branch so it stays out of the M2 PR.
-- **M2 PR:** opened from `m2-speech`; merge when CI passes.
+- **M2: PR #6** from `m2-speech`. CI passed. The spec-review findings are fixed (D33). Waiting for the owner to merge.
+- **M3: draft PR #7** from `m3-export`, built on `m2-speech`, so it shows M2's commits until #6 merges.
+  - Done:
+    - The exporters, restored from 1c56c79 (M4B with chapters, cover and tags; MP3 per chapter).
+    - `tests/test_export.py`: 7 unit tests with a fake ffmpeg, plus 2 real-encode tests that read results back with mutagen (new dev dependency) and skip without the bundled ffmpeg.
+    - CLI `pagevoice export BOOK --out book.m4b [--format mp3]`.
+    - The exporters fail before preparing chapters if ffmpeg is missing.
+  - There's no ffmpeg on the laptop, so the real-encode tests only run in the `ffmpeg` workflow on PR #7.
+- **Fast tests:** 204 passed, 3 skipped.
 
 ## Next step
-1. When the M2 PR is merged: create `m3-export` from `main` and `git cherry-pick 1c56c79`. That brings back:
-   - `packaging/ffmpeg/build.sh` (LGPL-only ffmpeg 8.1.3 + LAME 3.100, checksums pinned)
-   - `.github/workflows/ffmpeg.yml`
-   - `src/pagevoice/export/` (`ffmpeg.py` finds the bundled ffmpeg, never PATH; `audiobook.py` writes the M4B and the MP3s)
-2. M3: test the exporters (`tests/test_export.py`, with mutagen as a dev dependency to read M4B chapters and tags), run the ffmpeg workflow, add the CLI `export` command, run the spec-reviewer, open the PR.
-3. Then M4 (GUI). Don't start M5.
+1. Check the `ffmpeg` workflow on PR #7, on both OSes: the build, the LGPL check, and the real M4B/MP3 tests. Fix what fails. Watch for whether the ipod muxer writes chapters that mutagen reads (`chpl`), and whether a PNG cover works as `attached_pic`.
+2. Fix the M3 spec-reviewer findings (the review was started on 2026-10-16; re-run it if its results were lost).
+3. Mark PR #7 ready once #6 is merged and the checks pass.
+4. Then M4 (GUI). Don't start M5.
 
 ## Waiting on the owner
 - **Model manifest:**
