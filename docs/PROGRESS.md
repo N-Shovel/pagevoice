@@ -68,7 +68,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Fast tests:** 251 passed, 3 skipped (25 GUI tests, headless).
 
 ## Next step
-1. When CI passes on PR #8, mark it ready for the owner.
+1. When CI passes on PR #8, mark it ready for the owner. On 2026-10-16 GitHub didn't pick up the pushes after 0c4e4ce, although the branch itself was updated. If the PR still shows 0c4e4ce, close and reopen it (the owner's call) so CI runs on the review fixes. Locally: lint, formatting, the license check and 251 fast tests pass.
 2. Don't start M5.
 
 ## Waiting on the owner
