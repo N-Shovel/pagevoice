@@ -1,0 +1,9 @@
+id = "gutenberg-pride-txt"
+format = "txt"
+file = "book.txt"
+source = "https://www.gutenberg.org/cache/epub/1342/pg1342.txt"
+sha256 = "3f6bb9d6f78e0293b56acd4714dd68cb7d6d1d293402031ce9d5a216bcaf9d75"
+unit = "chapter"
+pages = [3]
+traps = ["Project Gutenberg licence header and footer", "[Illustration] markers, one holding a chapter heading", "_italics_"]
+notes = "Public domain. Project Gutenberg plain text. page-NNN is chapter NNN."

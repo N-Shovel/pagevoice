@@ -1,0 +1,10 @@
+id = "archive-essays-of-elia-pdf"
+format = "pdf"
+file = "book.pdf"
+source = "https://archive.org/download/bub_gb_KNwDY4Wc3rYC/bub_gb_KNwDY4Wc3rYC.pdf"
+sha256 = "7f5063b4076fdf8676da9b596fb2e7d029b3a4d4c5c4f9f3abaa802099699393"
+unit = "page"
+pages = []
+traps = ["two-column pages (must be flagged)"]
+notes = "Public domain (Lamb, Tauchnitz 1869). Two-column OCR scan: the check is that body pages are flagged multi-column."
+multi_column_share = 0.8

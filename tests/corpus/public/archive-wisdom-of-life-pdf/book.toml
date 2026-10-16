@@ -1,0 +1,9 @@
+id = "archive-wisdom-of-life-pdf"
+format = "pdf"
+file = "book.pdf"
+source = "https://archive.org/download/wisdomlifeandot00schogoog/wisdomlifeandot00schogoog_text.pdf"
+sha256 = "40063434a74638e08de119d46e8e3580028bb9ba50df94819a85111f636ab9fe"
+unit = "page"
+pages = [26, 27]
+traps = ["OCR text layer (scan)", "running heads with page numbers", "Digitized by Google watermark", "bracketed signature numbers"]
+notes = "Public domain (Schopenhauer, tr. Saunders). Internet Archive scan with an OCR text layer: the golden text keeps OCR spelling errors, which cleanup can't fix."

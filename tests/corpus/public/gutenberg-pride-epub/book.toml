@@ -1,0 +1,9 @@
+id = "gutenberg-pride-epub"
+format = "epub"
+file = "book.epub"
+source = "https://www.gutenberg.org/ebooks/1342.epub3.images"
+sha256 = "d401ad6b118e84d01b8dd1a3d034fd41784feb14c50f1f7a0fc17f3263fa8e9f"
+unit = "chapter"
+pages = [2, 3]
+traps = ["drop caps drawn as images", "captions inside chapter headings", "contents as links and tables", "Gutenberg boilerplate"]
+notes = "Public domain. Project Gutenberg EPUB3 with images. page-NNN is chapter NNN."

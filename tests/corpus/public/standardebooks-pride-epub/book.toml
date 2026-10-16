@@ -1,0 +1,9 @@
+id = "standardebooks-pride-epub"
+format = "epub"
+file = "book.epub"
+source = "https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice/downloads/jane-austen_pride-and-prejudice.epub?source=download"
+sha256 = "85814417c1a74d2ca7f3b077b47454d0cfc728392d40d846d1c97d44f24c5279"
+unit = "chapter"
+pages = [2]
+traps = ["imprint and colophon", "Roman-numeral chapter headings"]
+notes = "CC0 (Standard Ebooks). page-NNN is chapter NNN. Standard Ebooks updates its files; if the checksum stops matching, refresh it."

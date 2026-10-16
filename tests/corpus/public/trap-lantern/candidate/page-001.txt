@@ -1,0 +1,3 @@
+The Lantern Keeper
+PREFACE
+This short book was written to test how PageVoice cleans up a PDF. Every trap a real book can set is here somewhere: running heads, page numbers, notes at the foot of the page, words split at the end of a line, and more.
