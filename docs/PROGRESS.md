@@ -3,8 +3,8 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-16
-- **Milestone:** M1, ingest and cleanup (M0 done except the owner items below)
-- **Branch:** m1-ingest
+- **Milestone:** M2, speech (M0 and M1 done except the owner items below)
+- **Branch:** m2-speech
 - **State:** working. The other states are: not started, paused (usage), waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
@@ -28,30 +28,30 @@ Claude Code keeps this file current. It updates it after every finished step and
     - British English is detected from any spelling of the code.
     - Benchmark comparisons match on the CPU too.
 
-## In progress
-- M1 on `m1-ingest`:
+- M1 (PRs #4 and #5, merged by the owner):
   - Readers: TXT, EPUB (parsed by hand) and PDF (pdfplumber).
-  - Removals for:
+  - Removals, all restorable:
     - headers, footers and page numbers
     - footnotes (moved to the chapter's end) and their markers
     - captions, tables, contents and boilerplate
-    - line-break hyphens
+    - figures, non-linear EPUB text and line-break hyphens
   - Repairs: drop caps, small caps, ligatures and soft hyphens.
-  - Scanned and multi-column pages are flagged.
-  - Seven trap PDFs and five public books are in the corpus. 23 candidate pages match PageVoice's output.
-  - Spec-reviewer: 3 violations fixed, and its code concerns fixed:
-    - EPUB notes with an inner id
-    - non-linear EPUB documents
-    - SVG, MathML and image alt text
-    - PDF note markers and hyphens
-    - notes on multi-column pages
-    - language handling, copy-protected PDFs, same-page bookmarks
-    - Gutenberg footnotes, unclosed markers and TXT locations
-  - PR #4: merge when CI passes.
-  - M1 isn't fully "done" (golden corpus passes) until the owner approves golden pages.
+  - Scanned and multi-column pages are flagged, and non-English books are refused plainly.
+  - Corpus: 7 trap PDFs and 5 public books. 23 candidate pages match.
+  - The spec-reviewer's findings are fixed.
+  - The resilient corpus fetch missed the merge; it's on `m2-speech`.
+
+## In progress
+- M2 on `m2-speech` (commit ef71412):
+  - `normalize/en.py`: all 59 rows of `tests/voice/sentences.tsv` match.
+  - Round-trip WER is down from 5.3% to 3.7%. Most of what's left is Whisper writing digits.
+  - Pronunciation lists: TSV, global plus per-book.
+  - FLAC paragraph cache: renders and resumes (a rerun came straight from the cache in 2 s).
+  - CLI: `pagevoice info`, `pagevoice download` and `pagevoice render`.
+  - Next: the spec-reviewer (running), then the PR.
 
 ## Next step
-- Merge M1. Then M2 (speech): `normalize/en.py` driven by `tests/voice/sentences.tsv`, pronunciation lists, and the paragraph render cache with resume.
+- After M2: M3 (export). CI-built LGPL ffmpeg; M4B with chapters, cover and metadata; MP3 per chapter.
 
 ## Waiting on the owner
 - **Model manifest:**
@@ -60,6 +60,10 @@ Claude Code keeps this file current. It updates it after every finished step and
   - Move the file to `model_manifest.json`.
   - Until then, dev tools download from the pinned source URLs.
 - **Blind A/B listening:** the fp32/int8 pairs are in `benchmarks/out/2026-10-16-ab/` (only on the laptop; that folder is git-ignored). Listen, note a preference per pair, and only then open `key.json`. That settles D30.
+- **Listen to a rendered chapter:**
+  - Run `uv run pagevoice render tests/corpus/public/trap-lantern/book.pdf --out out --chapters 3 --dev-proposed-manifest`.
+  - Check the pauses (D33) and the reading of numbers and abbreviations.
+  - "'Tis" comes out as "tease"; it's a candidate for the global pronunciation list.
 - **Listen to the voices** (`benchmarks/out/roundtrip-2026-10-16-*/audio/`) for D31, and to the names and heteronyms for D29.
 - **espeakng-loader in `REVIEWED`** in `tools/check_licenses.py` (the skill asks for the owner's OK).
 - **Golden pages:**
