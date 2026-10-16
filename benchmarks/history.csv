@@ -1,0 +1,3 @@
+date,git_sha,machine,os,cpu,provider,variant,threads,sentences,audio_seconds,wall_seconds,x_realtime,load_seconds,peak_rss_mb
+2026-10-16,b5c1d6d,laptop-tlc3d2rv,Windows 11,AMD Ryzen 5 5600H with Radeon Graphics,cpu,fp32,default,59,243.075,92.58,2.626,1.349,1073.3
+2026-10-16,b5c1d6d,laptop-tlc3d2rv,Windows 11,AMD Ryzen 5 5600H with Radeon Graphics,cpu,int8,default,59,243.125,103.383,2.352,1.271,1036.7

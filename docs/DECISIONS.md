@@ -113,6 +113,7 @@ We build a stripped-down ffmpeg in CI with only what we need: native AAC, LAME, 
 - hatchling is the build backend.
 - Python 3.13 is the version already installed on the dev laptop.
 The owner confirmed these on 2026-10-09. In M0, check that onnxruntime, PySide6, PyInstaller and the chosen G2P library all have Python 3.13 builds. If one doesn't, drop to 3.12; `requires-python` already allows it.
+- **Update 2026-10-16 (M0):** onnxruntime, PySide6 (abi3 wheels), PyInstaller and spaCy all have 3.13 builds, but misaki 0.9.4 declares `requires-python <3.13`. Since misaki is the G2P (D29), the project moved to **Python 3.12** (`.python-version`, `requires-python = ">=3.12,<3.13"`). Revisit when misaki allows 3.13.
 
 ### D25. Claude Code setup (2026-10-09)
 - A short CLAUDE.md; path-scoped rules in `.claude/rules/`; hooks and permissions in `.claude/settings.json`; project skills for repeated procedures; and a read-only `spec-reviewer` agent run at the end of each milestone.
@@ -139,6 +140,28 @@ Kokoro outputs 24 kHz audio, so a 10-hour book's paragraph cache is about 1–2 
 
 *Why:* the owner wants long runs to stop cleanly before the limit and resume with one word, and to finish PRs without waiting on approvals.
 
+### D29. G2P: misaki with espeak-ng fallback (2026-10-16, provisional, closes O1)
+- **misaki** (Kokoro's own G2P, Apache-2.0) with spaCy `en_core_web_sm` for part-of-speech tags. Words it doesn't know go to **espeak-ng** (via phonemizer-fork and espeakng-loader, GPL-3.0). Without the fallback, misaki drops unknown names entirely (❓ for "Siobhan", "Nguyen").
+- **Heteronyms (`het-*` rows, phoneme output):** misaki 9/12, espeak-ng 9/12. Both miss present-tense "read", "tear" (rip) and "lead" (metal). These go to the pronunciation list for now.
+- **Round-trip (faster-whisper small.en, fp32, af_heart, raw text without our normalizer):** misaki 5.3% WER, 14 failing rows; espeak-ng 6.9%, 19 failing rows.
+- misaki's transformer tagger (`trf=True`, the `misaki[en]` extra) pulls in PyTorch, so it is off and the extra isn't installed (D3).
+- Cost: spaCy + model + espeak-ng add tens of MB to the installer (SPEC O1 expected this), and Python drops to 3.12 (D24).
+
+*Why:* tied on heteronyms, better on the round-trip, and Kokoro was trained on misaki's phoneme set. *Provisional:* the owner hasn't listened yet. *Rejected for now:* espeak-ng alone.
+
+### D30. Model variant: fp32 (2026-10-16, provisional)
+- On `laptop-tlc3d2rv` (Ryzen 5 5600H, CPU provider), two runs each: fp32 2.63× and 2.32× real time; int8 2.35× and 2.22×. Peak RAM about 1.07 GB against 1.04 GB, including spaCy. A 10-hour book takes about 4 hours either way.
+- int8 (dynamic quantization) is no faster on this CPU, and fp32 is the reference quality. The only gain from int8 is download size (92 MB against 326 MB).
+- CI runner numbers are in `benchmarks/history.csv`.
+
+*Provisional:* waiting on the owner's blind A/B listening (`benchmarks/out/2026-10-16-ab/`). If int8 sounds the same, the download size may tip it.
+
+### D31. Default voice af_heart, speed 1.0 (2026-10-16, provisional, closes O4)
+- af_heart is rated highest in Kokoro's VOICES.md and had the lowest round-trip WER of the voices tried (see PROGRESS/PR for the table).
+- Speed stays at 1.0 until the owner listens.
+
+*Provisional:* naturalness can't be judged from numbers; the owner picks after listening.
+
 ---
 
 ## Dependency log
@@ -151,3 +174,14 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-09 | pytest | MIT | dev | Tests |
 | 2026-10-09 | ruff | MIT | dev | Format and lint (runs after every edit) |
 | 2026-10-09 | pip-licenses | MIT | dev | License check for every installed package |
+| 2026-10-16 | onnxruntime | MIT | runtime | Runs Kokoro (D3) |
+| 2026-10-16 | numpy | BSD-3-Clause | runtime | Audio arrays, model inputs |
+| 2026-10-16 | platformdirs | MIT | runtime | Per-user model, cache and settings folders (D26) |
+| 2026-10-16 | misaki 0.9.4 | Apache-2.0 | runtime | G2P (D29); installed without the `[en]` extra, which pulls PyTorch |
+| 2026-10-16 | spacy 3.8 | MIT | runtime | Part-of-speech tags for misaki's heteronyms (D29) |
+| 2026-10-16 | en-core-web-sm 3.8.0 | MIT | runtime | spaCy's English model, from spaCy's GitHub release (not on PyPI) |
+| 2026-10-16 | num2words | LGPL-2.1 | runtime | misaki's number reading |
+| 2026-10-16 | phonemizer-fork | GPL-3.0 | runtime | espeak-ng fallback for words misaki doesn't know (D29) |
+| 2026-10-16 | espeakng-loader | MIT (bundles espeak-ng, GPL-3.0+) | runtime | Ships the espeak-ng library; metadata empty, so it's in `REVIEWED` |
+| 2026-10-16 | psutil | BSD-3-Clause | dev | Peak RAM in the benchmark on Windows |
+| 2026-10-16 | faster-whisper | MIT | roundtrip | Transcribes rendered audio for the round-trip check; never shipped |

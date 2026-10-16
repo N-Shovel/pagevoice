@@ -29,6 +29,10 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
 ]
+# Dev-only: transcribe rendered audio back for the round-trip check. Never shipped.
+roundtrip = [
+    "faster-whisper>=1.1",
+]
 
 [tool.uv.sources]
 # spaCy's English model isn't on PyPI; it ships as a wheel on spaCy's GitHub releases.
