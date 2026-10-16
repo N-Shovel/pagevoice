@@ -45,6 +45,3 @@ packaging/ffmpeg/out/
 
 # Personal Claude Code overrides
 .claude/settings.local.json
-
-# ffmpeg build work folder (sources and objects)
-packaging/ffmpeg/work/

@@ -3,4 +3,3 @@
 *.epub binary
 *.png binary
 *.jpg binary
-*.sh text eol=lf
