@@ -99,3 +99,36 @@ def test_synthesis_produces_audio():
     audio = Kokoro(model).synthesize(g2p_for("en")("Hello there."), voice)
     assert 0.3 < len(audio) / SAMPLE_RATE < 5
     assert float(abs(audio).max()) > 0.01
+
+
+def test_out_of_vocabulary_phonemes_are_reported(caplog):
+    assert tokenize("hˈɛlO ❓") == tokenize("hˈɛlO ")
+    assert "❓" in caplog.text
+
+
+def test_language_codes_are_normalized():
+    from pagevoice.voice.g2p import normalize_language
+
+    assert normalize_language(" en_GB ") == "en-gb"
+
+
+def test_non_english_is_refused():
+    from pagevoice.voice.g2p import g2p_for
+
+    with pytest.raises(ValueError, match="English only"):
+        g2p_for("fr")
+
+
+def test_g2p_never_downloads_the_spacy_model(monkeypatch):
+    """misaki would pip-download a 'missing' spaCy model; PageVoice must refuse instead."""
+    import spacy.util
+
+    from pagevoice.voice import g2p_en
+
+    g2p_en._load.cache_clear()
+    monkeypatch.setattr(spacy.util, "is_package", lambda name: False)
+    try:
+        with pytest.raises(g2p_en.G2PError):
+            g2p_en._load("misaki", False)
+    finally:
+        g2p_en._load.cache_clear()

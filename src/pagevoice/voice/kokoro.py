@@ -30,14 +30,19 @@ def tokenize(phonemes: str) -> list[int]:
     ids = [VOCAB[c] for c in phonemes if c in VOCAB]
     dropped = {c for c in phonemes if c not in VOCAB}
     if dropped:
-        log.debug("Phonemes not in Kokoro's vocabulary, skipped: %s", "".join(sorted(dropped)))
+        # Usually misaki's unknown-word marker. Loud, because it means silent text.
+        log.warning("Phonemes not in Kokoro's vocabulary, skipped: %s", "".join(sorted(dropped)))
     return ids
+
+
+def _count(phonemes: str) -> int:
+    return sum(c in VOCAB for c in phonemes)
 
 
 def split_phonemes(phonemes: str, limit: int = MAX_TOKENS) -> list[str]:
     """Split a phoneme string into pieces of at most limit tokens, at the best breaks."""
     phonemes = phonemes.strip()
-    if len(tokenize(phonemes)) <= limit:
+    if _count(phonemes) <= limit:
         return [phonemes] if phonemes else []
     for pattern in _BREAKS:
         parts = [p for p in pattern.split(phonemes) if p.strip()]
@@ -50,12 +55,12 @@ def split_phonemes(phonemes: str, limit: int = MAX_TOKENS) -> list[str]:
     current = ""
     for part in parts:
         candidate = f"{current} {part}".strip() if current else part
-        if len(tokenize(candidate)) <= limit:
+        if _count(candidate) <= limit:
             current = candidate
             continue
         if current:
             pieces.append(current)
-        if len(tokenize(part)) > limit:
+        if _count(part) > limit:
             pieces.extend(split_phonemes(part, limit))
             current = ""
         else:
@@ -78,6 +83,10 @@ class Kokoro:
         self.session = ort.InferenceSession(
             str(model_path), sess_options=options, providers=providers(provider)
         )
+        active = self.session.get_providers()[0]
+        if active != providers(provider)[0]:
+            # ONNX Runtime silently falls back to CPU; never let that pass as DirectML.
+            raise RuntimeError(f"{provider} isn't available here (running on {active})")
         self._voices: dict[Path, np.ndarray] = {}
 
     def voice(self, path: Path) -> np.ndarray:

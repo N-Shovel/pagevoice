@@ -54,7 +54,8 @@ def ensure_file(
     """Return the verified local copy of entry, downloading it first if needed.
 
     use_source downloads from the pinned upstream URL instead of our release; the
-    checksum is the same either way.
+    checksum is the same either way. Dev tools only (benchmark, round-trip) while the
+    manifest is still the proposed one; the app always uses our release (D9).
     """
     folder = folder or models_dir()
     folder.mkdir(parents=True, exist_ok=True)

@@ -150,14 +150,30 @@ Kokoro outputs 24 kHz audio, so a 10-hour book's paragraph cache is about 1–2 
 *Why:* tied on heteronyms, better on the round-trip, and Kokoro was trained on misaki's phoneme set. *Provisional:* the owner hasn't listened yet. *Rejected for now:* espeak-ng alone.
 
 ### D30. Model variant: fp32 (2026-10-16, provisional)
-- On `laptop-tlc3d2rv` (Ryzen 5 5600H, CPU provider), two runs each: fp32 2.63× and 2.32× real time; int8 2.35× and 2.22×. Peak RAM about 1.07 GB against 1.04 GB, including spaCy. A 10-hour book takes about 4 hours either way.
-- int8 (dynamic quantization) is no faster on this CPU, and fp32 is the reference quality. The only gain from int8 is download size (92 MB against 326 MB).
-- CI runner numbers are in `benchmarks/history.csv`.
+Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
 
-*Provisional:* waiting on the owner's blind A/B listening (`benchmarks/out/2026-10-16-ab/`). If int8 sounds the same, the download size may tip it.
+| Machine | CPU | fp32 × real time | int8 × real time | Peak RAM fp32 / int8 |
+|---|---|---|---|---|
+| laptop-tlc3d2rv | Ryzen 5 5600H | 2.63 | 2.35 | 1073 / 1037 MB |
+| gha-linux | EPYC 7763 | 2.30 | 2.81 | 1138 / 1071 MB |
+| gha-windows | EPYC 9V74 | 2.37 | 2.81 | 1080 / 1044 MB |
+
+- A second, unlogged laptop run gave fp32 2.32× and int8 2.22×. Laptop runs vary by about 10%.
+- int8 (dynamic quantization) is about 20% faster on the server CPUs but not on the laptop. The laptop is what decides the user experience (D22).
+- RAM is about the same either way, and most of it is spaCy plus the runtime. int8's real gain is download size: 92 MB against 326 MB.
+- A 10-hour book takes about 4 hours on the laptop either way.
+
+*Why fp32:* faster on the machine that matters, and it's the reference quality. *Provisional:* waiting on the owner's blind A/B listening (`benchmarks/out/2026-10-16-ab/`). If int8 sounds the same, its smaller download and the server-CPU speed may tip it.
 
 ### D31. Default voice af_heart, speed 1.0 (2026-10-16, provisional, closes O4)
-- af_heart is rated highest in Kokoro's VOICES.md and had the lowest round-trip WER of the voices tried (see PROGRESS/PR for the table).
+- af_heart is rated highest in Kokoro's VOICES.md and had the lowest round-trip WER of the voices tried (fp32, misaki, faster-whisper small.en, raw text):
+
+  | Voice | Overall WER |
+  |---|---|
+  | af_heart | 5.3% |
+  | af_bella | 5.4% |
+  | am_michael | 6.2% |
+  | am_fenrir | 6.2% |
 - Speed stays at 1.0 until the owner listens.
 
 *Provisional:* naturalness can't be judged from numbers; the owner picks after listening.
@@ -184,4 +200,4 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-16 | phonemizer-fork | GPL-3.0 | runtime | espeak-ng fallback for words misaki doesn't know (D29) |
 | 2026-10-16 | espeakng-loader | MIT (bundles espeak-ng, GPL-3.0+) | runtime | Ships the espeak-ng library; metadata empty, so it's in `REVIEWED` |
 | 2026-10-16 | psutil | BSD-3-Clause | dev | Peak RAM in the benchmark on Windows |
-| 2026-10-16 | faster-whisper | MIT | roundtrip | Transcribes rendered audio for the round-trip check; never shipped |
+| 2026-10-16 | faster-whisper | MIT | roundtrip | Transcribes rendered audio for the round-trip check; never shipped. The whole group (94 packages, including av, ctranslate2, tokenizers) passed `check_licenses.py` with `--group roundtrip`; CI checks only the default groups |

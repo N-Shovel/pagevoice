@@ -8,10 +8,15 @@ G2P = Callable[[str], str]
 DEFAULT_BACKEND = "misaki"
 
 
+def normalize_language(language: str) -> str:
+    """'en_GB' -> 'en-gb'."""
+    return language.strip().lower().replace("_", "-")
+
+
 def g2p_for(language: str, backend: str | None = None) -> G2P:
-    base = language.lower().replace("_", "-").split("-")[0]
-    if base == "en":
+    code = normalize_language(language)
+    if code.split("-")[0] == "en":
         from pagevoice.voice.g2p_en import EnglishG2P
 
-        return EnglishG2P(backend or DEFAULT_BACKEND, british=language.lower() == "en-gb")
+        return EnglishG2P(backend or DEFAULT_BACKEND, british=code == "en-gb")
     raise ValueError(f"PageVoice v1 reads English only; no G2P for language {language!r}")

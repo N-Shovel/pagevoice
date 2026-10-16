@@ -128,15 +128,16 @@ def run_variant(variant: str, args: argparse.Namespace, out_dir: Path) -> dict:
     return json.loads(done.stdout.strip().splitlines()[-1])
 
 
-def previous_row(machine: str, provider: str, variant: str) -> dict | None:
+def previous_row(row: dict) -> dict | None:
+    """Last logged row for the same machine, CPU, provider and variant.
+
+    The CPU is part of the match because CI runners under one machine name vary.
+    """
     if not HISTORY.exists():
         return None
+    match = ("machine", "cpu", "provider", "variant")
     with HISTORY.open(encoding="utf-8", newline="") as fh:
-        rows = [
-            r
-            for r in csv.DictReader(fh)
-            if (r["machine"], r["provider"], r["variant"]) == (machine, provider, variant)
-        ]
+        rows = [r for r in csv.DictReader(fh) if all(r[k] == str(row[k]) for k in match)]
     return rows[-1] if rows else None
 
 
@@ -226,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
             "threads": args.threads or "default",
             **result,
         }
-        change = compare(row, previous_row(machine, args.provider, variant))
+        change = compare(row, previous_row(row))
         if not args.no_log:
             append_row(row)
         report.append((row, change))
@@ -239,8 +240,13 @@ def main(argv: list[str] | None = None) -> int:
             f"{row['peak_rss_mb']:>12.0f}  {change}"
         )
     for row, _ in report:
-        hours = 10 / row["x_realtime"]
-        print(f"A 10-hour book takes about {hours:.1f} hours at {row['variant']} on this machine.")
+        # End to end includes G2P (spaCy tagging), which x_realtime leaves out.
+        end_to_end = row["audio_seconds"] / (row["wall_seconds"] + row["g2p_seconds"])
+        hours = 10 / end_to_end
+        print(
+            f"{row['variant']}: {end_to_end:.2f}x real time including G2P; a 10-hour book "
+            f"takes about {hours:.1f} hours on this machine."
+        )
 
     if len(dirs) == 2:
         ab_dir = OUT / f"{today}-ab"
