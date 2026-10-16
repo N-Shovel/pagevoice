@@ -129,7 +129,9 @@ def test_g2p_warnings_are_reported(cache):
         g2p_warning = None
 
         def phonemes(self, text):
-            self.g2p_warning = "Part of this text couldn't be pronounced." if "zz" in text.lower() else None
+            self.g2p_warning = (
+                "Part of this text couldn't be pronounced." if "zz" in text.lower() else None
+            )
             return text
 
     voice = Dropping(manifest=load_manifest(PROPOSED))

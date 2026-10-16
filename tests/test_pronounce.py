@@ -68,3 +68,29 @@ def test_longer_entries_win():
 def test_bad_rows_are_explained(line):
     with pytest.raises(LexiconError, match="Line 1"):
         parse(line)
+
+
+def test_possessives_and_quotes_still_match_whole_words():
+    entries = [Entry("Hermione", "her-MY-oh-nee"), Entry("Brien", "BRY-en")]
+    for text, spoken in [
+        ("Hermione's wand.", "her-MY-oh-nee's wand."),
+        ("Hermione’s wand.", "her-MY-oh-nee’s wand."),
+        ("'Hermione,' he said.", "'her-MY-oh-nee,' he said."),
+        ("O'Brien left.", "O'Brien left."),
+        ("Hermione'll come.", "her-MY-oh-nee'll come."),
+    ]:
+        applied = apply(text, entries)
+        assert applied.fill(applied.text) == spoken
+
+
+def test_names_in_the_list_keep_their_context_for_the_normalizer():
+    entries = [Entry("Jones", "JOHNZ"), Entry("Henry", "HEN-ree")]
+    applied = apply("Dr. Jones met Henry VIII.", entries)
+    assert applied.fill(normalize(applied.text)) == "Doctor JOHNZ met HEN-ree the Eighth."
+
+
+def test_many_entries_get_distinct_placeholders():
+    entries = [Entry(f"Name{n}", f"spoken{n}") for n in range(25)]
+    text = " ".join(f"Name{n}" for n in range(25))
+    applied = apply(text, entries)
+    assert applied.fill(applied.text) == " ".join(f"spoken{n}" for n in range(25))

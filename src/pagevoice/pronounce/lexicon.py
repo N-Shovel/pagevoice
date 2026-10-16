@@ -42,7 +42,9 @@ class Entry:
     def pattern(self) -> re.Pattern:
         body = re.escape(self.word)
         if self.whole_word:
-            body = rf"(?<![\w']){body}(?![\w'])"
+            # Not inside a word. "Hermione's", "Hermione'll" and a quoted 'Hermione' still
+            # match; "Brien" doesn't match inside "O'Brien".
+            body = rf"(?<!\w)(?<!\w['’]){body}(?!\w)"
         return re.compile(body, 0 if self.case_sensitive else re.IGNORECASE)
 
     def replacement(self) -> str:
@@ -132,15 +134,22 @@ def merge(global_entries: list[Entry], book_entries: list[Entry]) -> list[Entry]
     return sorted(list(book_entries) + kept, key=lambda e: -len(e.word))
 
 
-_OPEN, _CLOSE, _BASE = "", "", 0xE100  # private-use characters
+# A placeholder looks like an ordinary word, capitalised like the word it replaces, so the
+# normalizer still sees a name after "Dr." or before "VIII". The letters can't form a
+# Roman numeral, an abbreviation or an all-capital word: "Qzxv" + index as a-j + "q".
+_PLACEHOLDER = re.compile(r"[Qq]zxv([a-j]+)q")
+
+
+def _placeholder(index: int, capital: bool) -> str:
+    digits = "".join(chr(ord("a") + int(d)) for d in str(index))
+    return f"{'Q' if capital else 'q'}zxv{digits}q"
 
 
 @dataclass
 class Applied:
     """Text with each matched word swapped for a placeholder, ready for normalization.
 
-    Placeholders are private-use characters with no digits or letters, so the normalizer
-    leaves them alone; fill() puts the respellings or phoneme markup back afterwards.
+    fill() puts the respellings or phoneme markup back afterwards.
     """
 
     text: str
@@ -148,9 +157,11 @@ class Applied:
     replacements: list[str]
 
     def fill(self, text: str) -> str:
-        return re.sub(
-            f"{_OPEN}(.){_CLOSE}", lambda m: self.replacements[ord(m.group(1)) - _BASE], text
-        )
+        def back(match: re.Match) -> str:
+            index = int("".join(str(ord(c) - ord("a")) for c in match.group(1)))
+            return self.replacements[index]
+
+        return _PLACEHOLDER.sub(back, text)
 
 
 def apply(text: str, entries: list[Entry]) -> Applied:
@@ -158,13 +169,21 @@ def apply(text: str, entries: list[Entry]) -> Applied:
     used: list[Entry] = []
     replacements: list[str] = []
     for entry in entries:
+        found = False
 
-        def swap(_match, entry=entry):
+        def swap(match, entry=entry):
+            nonlocal found
+            if match.group("kept"):
+                return match.group(0)
+            found = True
             replacements.append(entry.replacement())
-            return f"{_OPEN}{chr(_BASE + len(replacements) - 1)}{_CLOSE}"
+            return _placeholder(len(replacements) - 1, match.group(0)[:1].isupper())
 
-        # Placeholders also stop a shorter entry from matching inside a longer one's.
-        text, count = entry.pattern().subn(swap, text)
-        if count:
+        # Earlier placeholders match first and are kept as they are, so a shorter entry
+        # can't match inside a longer one's ("York" inside "New York").
+        pattern = entry.pattern()
+        either = re.compile(rf"(?P<kept>[Qq]zxv[a-j]+q)|{pattern.pattern}", pattern.flags)
+        text = either.sub(swap, text)
+        if found:
             used.append(entry)
     return Applied(text, used, replacements)

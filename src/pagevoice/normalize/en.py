@@ -150,6 +150,8 @@ INITIALISMS = {
     "NBC", "CBS", "ABC", "MIT", "UCLA", "NYC", "LA", "DC", "HQ", "ID", "IQ", "MP", "PM",
     "RAF", "IRA", "KGB", "NHS", "BC", "AD", "OK", "BMW", "HIV", "ATM", "PDF", "URL", "GPS",
 }  # fmt: skip
+# Initialisms that are ordinary words when a whole line is in capitals.
+SHOUTABLE_INITIALISMS = {"US"}
 ROMAN_CARDINAL_AFTER = {
     "chapter", "part", "book", "volume", "vol", "war", "act", "scene", "section", "phase",
     "article", "psalm", "canto", "stave", "letter", "page", "appendix", "plate", "class",
@@ -229,14 +231,50 @@ def _fraction(match: re.Match) -> str:
     return f"{cardinal(top)} {name}"
 
 
+# A 4-digit number is read as a year only with context: one of these words before it, a
+# year before "and"/"to" ("between 1914 and 1918"), the start of a sentence (style guides
+# only let a year begin one), the end of a clause ("It was 1945.") or an era after it.
+# Otherwise it is a count: "had 1500 soldiers".
+_YEAR_CUES = {
+    "in", "by", "since", "of", "from", "until", "till", "before", "after", "during",
+    "around", "circa", "c", "ca", "year", "summer", "spring", "winter", "autumn", "fall",
+    "established", "born", "died", "dated", "early", "late", "mid", "between",
+} | {m.lower() for m in MONTHS}  # fmt: skip
+_WORD_BEFORE = re.compile(r"([A-Za-z]+)[.,]?\s*$")
+_YEAR_LINK = re.compile(r"\b\d{4},?\s+(?:and|or|to|through|until)\s*$")
+_SENTENCE_START = re.compile(r"(?:^|[.!?:;][\"'”’)]*\s+)[\"'“‘(]*$")
+_CLAUSE_END = re.compile(r"\s*(?:[.,;:!?)\]\"'”’—–]|$)")
+_ERA = re.compile(r"\s+(?:A D|B C|C E|B C E)\b")
+
+
+def _year_context(string: str, start: int, end: int) -> bool:
+    before, after = string[:start], string[end:]
+    word = _WORD_BEFORE.search(before)
+    return bool(
+        (word and word.group(1).lower() in _YEAR_CUES)
+        or _YEAR_LINK.search(before)
+        or _SENTENCE_START.search(before)
+        or _CLAUSE_END.match(after)
+        or _ERA.match(after)
+        or before.endswith("A D ")  # "AD 1066", already spelled out
+    )
+
+
 def _number(match: re.Match) -> str:
     text = match.group(0)
     if "," in text or "." in text:
         return decimal(text)
     value = int(text)
-    if len(text) == 4 and is_year(value):
+    if len(text) == 4 and is_year(value) and _year_context(match.string, *match.span()):
         return year(value)
     return cardinal(value)
+
+
+def _slash_date(match: re.Match) -> str:
+    """12/25/1990: each number as it stands (day-month order can't be known)."""
+    first, second, last = match.groups()
+    end = year(int(last)) if len(last) == 4 and is_year(int(last)) else cardinal(int(last))
+    return f"{cardinal(int(first))} {cardinal(int(second))} {end}"
 
 
 def _iso_date(match: re.Match) -> str:
@@ -253,6 +291,11 @@ def _roman(match: re.Match) -> str:
         return match.group(0)
     keyword = before.strip().rstrip(".").lower()
     if keyword in ROMAN_CARDINAL_AFTER:
+        # A lone "I" after a lowercase keyword is the pronoun when a word follows: "the
+        # letter I sent". "Chapter I" and "in volume I." are numerals.
+        word_after = re.match(r"\s+\w", match.string[match.end() :])
+        if numeral in ("I", "i") and before.strip()[:1].islower() and word_after:
+            return match.group(0)
         return f"{before}{cardinal(value)}"
     # "Henry VIII", "John Paul II": a capitalised name, a numeral of two or more letters
     # (a lone "I" after a name is too often the pronoun).
@@ -263,6 +306,11 @@ def _roman(match: re.Match) -> str:
 
 def _caps(match: re.Match) -> str:
     word = match.group(0)
+    if word in SHOUTABLE_INITIALISMS:
+        # "the US" is spelled out, but in an all-capital line ("LET US GO") it's a word.
+        around = match.string[max(0, match.start() - 30) : match.end() + 30]
+        shouted = len(re.findall(r"\b[A-Z]{2,}\b", around)) > 1
+        return word.capitalize() if shouted else " ".join(word)
     if word in INITIALISMS:
         return " ".join(word)
     if roman_value(word) is not None:
@@ -345,7 +393,8 @@ def normalize(text: str) -> str:
     t = re.sub(r"\s?°\s?F\b", " degrees Fahrenheit", t)
     t = re.sub(r"\s?°", " degrees", t)
     t = re.sub(r"\b(\d{1,2}):(\d{2})\b", _time, t)
-    t = re.sub(r"\b(\d+)/(\d+)\b", _fraction, t)
+    t = re.sub(r"\b(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})\b", _slash_date, t)
+    t = re.sub(r"(?<![\d/])(\d+)/(\d+)\b(?!/\d)", _fraction, t)
     t = re.sub(r"\b(\d+)\s?[–—-]\s?(\d+)\b", lambda m: f"{m.group(1)} to {m.group(2)}", t)
     t = re.sub(r"\b(\d+)(st|nd|rd|th)\b", lambda m: ordinal(int(m.group(1))), t)
     t = re.sub(

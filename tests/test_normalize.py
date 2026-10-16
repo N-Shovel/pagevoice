@@ -50,3 +50,37 @@ def test_ordinary_prose_is_left_alone():
 def test_all_caps_words_are_read_as_words():
     assert normalize("IT is a truth") == "It is a truth"
     assert normalize("BOOK II. CHAPTER I.") == "Book two. Chapter one."
+
+
+@pytest.mark.parametrize(
+    ("text", "spoken"),
+    [
+        ("The army had 1500 soldiers.", "The army had one thousand five hundred soldiers."),
+        ("1914 changed everything.", "nineteen fourteen changed everything."),
+        ("It was 1945.", "It was nineteen forty-five."),
+        (
+            "between 1914 and 1918 the war",
+            "between nineteen fourteen and nineteen eighteen the war",
+        ),
+        ("in AD 1215 they signed", "in A D twelve fifteen they signed"),
+        ("summer of 1969 was hot", "summer of nineteen sixty-nine was hot"),
+    ],
+)
+def test_four_digit_numbers_are_years_only_with_context(text, spoken):
+    assert words(normalize(text)) == words(spoken)
+
+
+def test_slash_dates_are_not_fractions():
+    assert words(normalize("Born 12/25/1990.")) == words("Born twelve twenty-five nineteen ninety.")
+    assert words(normalize("Add 3/4 cup.")) == words("Add three quarters cup.")
+
+
+def test_lone_i_after_a_lowercase_keyword_is_the_pronoun():
+    assert normalize("He read the letter I sent.") == "He read the letter I sent."
+    assert normalize("See volume I.") == "See volume one."
+    assert normalize("Chapter I begins.") == "Chapter one begins."
+
+
+def test_us_is_spelled_out_except_in_capitals():
+    assert normalize("She moved to the US in May.") == "She moved to the U S in May."
+    assert normalize("LET US GO HOME") == "Let Us Go Home"
