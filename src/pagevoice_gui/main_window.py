@@ -147,6 +147,7 @@ class MainWindow(QMainWindow):
             self.load_book(Path(path))
 
     def load_book(self, path: Path) -> None:
+        path = Path(path).resolve()
         if self.session is not None:
             self.session.save_now()
         self.show_step(OPEN)

@@ -96,6 +96,8 @@ class ProducePage(QWidget):
         self.voice.currentIndexChanged.connect(self._settings_changed)
         self.speed.valueChanged.connect(self._settings_changed)
         self.read_notes.toggled.connect(self._settings_changed)
+        self.voice.setMaximumWidth(360)
+        self.speed.setMaximumWidth(120)
         voice_box = QGroupBox(self.tr("Voice"))
         form = QFormLayout(voice_box)
         form.addRow(self.tr("Voice:"), self.voice)
