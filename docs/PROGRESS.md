@@ -52,23 +52,23 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The spec-review fixes are in D34.
 
 ## In progress
-- **M4: draft PR #8** from `m4-gui`. CI passed on both OSes, and the 15 GUI tests ran headless on Ubuntu too.
-  - Engine (no Qt, tested):
-    - `edit.py`: restore, rename, merge, split.
-    - `project.py`: the saved review per book, and the per-book pronunciation list path.
-    - `speak()` for previews.
-  - GUI (`pagevoice-gui`, the `gui` extra with PySide6-Essentials):
-    - Open: PDFs go to review first; EPUB and TXT skip it.
-    - Review: dimmed removals with reasons, click to restore, chapter rename, merge and split, flagged pages.
-    - Pronunciations: the book's list and the list for all books, with preview and TSV import/export.
-    - Render: progress, time left, pause, resume and stop.
-    - Export, and the first-run voice download.
-  - All slow work runs through `pagevoice_gui/tasks.py` workers.
-  - The spec-reviewer was started for M4. Its findings are next.
-- **Fast tests:** 239 passed, 3 skipped.
+- **M4: PR #8** from `m4-gui`.
+  - What it is: the desktop app (`pagevoice-gui`): open → review → pronunciations → render → export, with every slow job off the UI thread. See D35.
+  - Spec review: done. All 7 violations and 14 concerns are fixed, including:
+    - review saves and big chapters no longer block the UI
+    - the cache size cap is a setting
+    - the cache is kept after export, with a button to free it
+    - the download always comes from our release outside development
+    - the download counts as busy work
+    - DirectML is offered when available
+    - the language override
+    - an unreadable saved review is kept as `.bak`
+    - merge and split remember titles
+    - strings go through translation
+- **Fast tests:** 251 passed, 3 skipped (25 GUI tests, headless).
 
 ## Next step
-1. Fix the M4 spec-reviewer findings (re-run it if its results were lost), then mark PR #8 ready.
+1. When CI passes on PR #8, mark it ready for the owner.
 2. Don't start M5.
 
 ## Waiting on the owner
@@ -95,6 +95,8 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Stress in respellings:** capitals in a "sounds like" respelling no longer mark stress (misaki never used them). Is that OK, or should the GUI preview steer people to the phonemes column for stress? (D33)
 - **Years with context (D33):** "had 1500 soldiers" is now a count, and "1914 changed everything" or "It was 1945." are years. Listen for misreadings in real books.
 - **Copy-protected PDFs (D32, provisional):** a PDF that forbids copying text is refused. Say if that's too strict.
+- **Thread pool (D35, provisional):** the GUI runs work on Qt's thread pool, not a QThread per job as `.claude/rules/gui.md` words it. It's the same mechanism. Confirm, and update the rule's wording if you agree.
+- **Try the app:** `uv sync --extra gui`, then `uv run pagevoice-gui --dev-proposed-manifest`. Review a PDF, render a chapter, and export it. Listen.
 - **Installer size:** the G2P stack (spaCy + English model + espeak-ng) is well over the skill's ~20 MB line for runtime packages. SPEC O1 expected this, but it needs the owner's OK.
 
 ## Notes for next time

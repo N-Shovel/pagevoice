@@ -272,3 +272,10 @@ def test_speak_reads_like_the_book(voice, cache):
     r = Renderer(book("Hermione was born in 1979."), voice, cache, book_id="b",
                  pronunciations=entries)  # fmt: skip
     assert seen == [r.items[1].spoken] == ["her-my-oh-nee was born in nineteen seventy-nine."]
+
+
+def test_clear_all_empties_the_cache(cache):
+    cache.put("d" * 64, np.zeros(2400, dtype=np.float32), 24000)
+    cache.remember("one", ["d" * 64])
+    assert cache.clear_all() > 0
+    assert cache.size() == 0 and cache.book_keys("one") == set()

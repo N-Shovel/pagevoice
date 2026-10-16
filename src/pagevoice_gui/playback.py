@@ -9,6 +9,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication
+
 LINUX_PLAYERS = (["pw-play"], ["paplay"], ["aplay", "-q"])
 
 
@@ -32,8 +34,9 @@ def play(path: Path) -> None:
         return
     command = player_command(path)
     if command is None:
-        raise PlaybackError(
-            "No sound player was found (PipeWire, PulseAudio or ALSA), so the preview "
-            "can't be played."
-        )
+        raise PlaybackError(QCoreApplication.translate(
+            "Playback",
+            "No sound player was found (PipeWire, PulseAudio or ALSA), so the preview can't "
+            "be played.",
+        ))  # fmt: skip
     subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

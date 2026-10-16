@@ -11,6 +11,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from platformdirs import user_log_dir
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from pagevoice import __version__
@@ -34,20 +35,28 @@ def _excepthook(kind, value, tb) -> None:
     """Never show a traceback: log it, show a short message (.claude/rules/gui.md)."""
     log.error("Unexpected error:\n%s", "".join(traceback.format_exception(kind, value, tb)))
     if QApplication.instance():
+        message = QCoreApplication.translate(
+            "PageVoice", "Something went wrong: %1.\nDetails are in %2."
+        )
         QMessageBox.warning(
             None,
             "PageVoice",
-            f"Something went wrong: {value or kind.__name__}.\nDetails are in {log_file()}.",
+            message.replace("%1", str(value) or kind.__name__).replace("%2", str(log_file())),
         )
 
 
 def make_window(dev_proposed_manifest: bool = False):
     from pagevoice.voice.engine import DEFAULT_VOICE, VoiceSetup
+    from pagevoice.voice.kokoro import dml_available
     from pagevoice.voice.manifest import ManifestError, load_manifest
     from pagevoice_gui.main_window import MainWindow
+    from pagevoice_gui.produce import VoiceUnavailable
 
+    # Development only: the proposed manifest, and with it the upstream download source.
+    # The installed app always uses the real manifest and our own release (D9).
+    dev = dev_proposed_manifest and not getattr(sys, "frozen", False)
     try:
-        manifest = load_manifest(allow_proposed=dev_proposed_manifest)
+        manifest = load_manifest(allow_proposed=dev)
         voices = sorted(manifest.voices)
     except ManifestError:
         log.exception("No model manifest")
@@ -55,10 +64,16 @@ def make_window(dev_proposed_manifest: bool = False):
 
     def voice_factory(name: str, provider: str) -> VoiceSetup:
         if manifest is None:
-            raise RuntimeError("this build has no voice manifest")
+            raise VoiceUnavailable(
+                QCoreApplication.translate(
+                    "PageVoice",
+                    "This copy of PageVoice is missing its list of voice files, so it can't "
+                    "set up the voice. Reinstall PageVoice.",
+                )
+            )
         return VoiceSetup(manifest, voice=name, provider=provider)
 
-    return MainWindow(voice_factory, voices)
+    return MainWindow(voice_factory, voices, dml=dml_available(), allow_upstream_download=dev)
 
 
 def main(argv: list[str] | None = None) -> int:

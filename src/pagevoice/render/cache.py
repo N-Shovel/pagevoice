@@ -130,6 +130,16 @@ class RenderCache:
         self._index(book_id).unlink(missing_ok=True)
         return freed
 
+    def clear_all(self) -> int:
+        """Delete all rendered audio and every book's index. Returns bytes freed."""
+        freed = 0
+        for path in (self.root / "audio").rglob("*.flac"):
+            freed += path.stat().st_size
+            path.unlink(missing_ok=True)
+        for index in (self.root / "books").glob("*.json"):
+            index.unlink(missing_ok=True)
+        return freed
+
     def size(self) -> int:
         return sum(p.stat().st_size for p in (self.root / "audio").rglob("*.flac"))
 
