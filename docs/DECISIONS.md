@@ -131,6 +131,14 @@ Kokoro outputs 24 kHz audio, so a 10-hour book's paragraph cache is about 1–2 
 - **Releases:** the version bump goes through a `release/vX.Y.Z` branch and PR, and the tag goes on the merge commit.
 *Why:* the first commit going straight to `main` was fine, but it should be the last. CI gives branch protection something to require.
 
+### D28. Pause at 90% plan usage; resume on "continue" (2026-10-16)
+- Only the status line receives the plan's 5-hour and weekly usage. `usage_statusline.py` saves it to a state file in the temp folder.
+- `usage_guard.py` (UserPromptSubmit and PostToolUse) adds a note at 90% and 95%. Claude then commits, updates docs/PROGRESS.md and stops (docs/PAUSE_AND_RESUME.md).
+- docs/PROGRESS.md is updated after every finished step, so even a hard stop at 100% loses nothing.
+- Claude pushes its branches and merges its own PRs without asking, once CI passes and the spec-reviewer agent finds nothing blocking. Force-pushes, remote branch deletion (`git push --delete`, `gh pr merge --delete-branch`, `gh api -X DELETE`) and refspec tricks (`+ref`, `:ref`) are denied in `.claude/settings.json`. Tags, releases and workflow runs still ask.
+
+*Why:* the owner wants long runs to stop cleanly before the limit and resume with one word, and to finish PRs without waiting on approvals.
+
 ---
 
 ## Dependency log
