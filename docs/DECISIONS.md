@@ -229,6 +229,33 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
 
 *Why:* the cache is what makes crash-resume and one-paragraph fixes cheap (D16), so anything that changes the audio has to change the key.
 
+### D34. How M3 writes audiobooks (2026-10-16)
+- **ffmpeg** (D18):
+  - Built by `packaging/ffmpeg/build.sh` from pinned, checksummed sources: ffmpeg 8.1.3 and LAME 3.100.
+  - Configured with `--disable-everything --disable-autodetect`, then only the parts the exporters use, plus zlib (zlib licence; the PNG decoder needs it) and the platform's threads.
+  - The script refuses to ship a binary that reports GPL or nonfree, or that lacks a decoder, encoder or muxer the exporters use. configure only warns when it drops one; that's how a PNG cover first failed in CI.
+  - Linux links zlib dynamically (it's on every system). Windows links everything statically.
+  - The app looks in its own bundle, then in `packaging/ffmpeg/out/` (development), never on PATH. `PAGEVOICE_FFMPEG` works in development only, never in the installed app.
+- **How audio gets to ffmpeg:**
+  - Each chapter is written from the render cache as one FLAC, in a work folder inside the cache directory, not the system temp folder (about 1 GB for 10 hours; `/tmp` can be RAM).
+  - Chapter times come from those files' exact lengths, rounded to the millisecond, back to back.
+- **M4B:**
+  - Written with ffmpeg's ipod muxer as 64 kbps mono AAC (D17).
+  - Chapters are written both as a QuickTime chapter track (Apple) and as Nero `chpl` (most other players); tests check both.
+  - Tags: title, album, artist, album artist, genre "Audiobook", the iTunes audiobook media type, a "Made with PageVoice" comment, and the audio language (ISO 639-2, "eng").
+- **MP3:**
+  - One file per chapter, named `NNN - Title.mp3`. The title has characters Windows forbids removed and is cut at 80 characters, so the files sort in order everywhere.
+  - Encoded as 64 kbps mono, the same as the M4B.
+  - ID3v2.3 tags: title, album, artist, track `n/total`, genre and language.
+  - After a full export, earlier `NNN - *.mp3` files in that folder that weren't rewritten are removed. Nothing else in the folder is touched.
+  - If cancelled, the chapters already finished are kept, and the CLI says so.
+- **Covers:** JPEG and PNG are embedded as attached pictures. Other types (GIF, WebP, SVG) are left out with a plain warning. Converting them is a possible later improvement.
+- **Safety:**
+  - Output is written to `.part` and renamed when complete.
+  - On cancel, Ctrl+C or a failing progress callback, ffmpeg is stopped before the partial file is deleted.
+  - Both exporters check for ffmpeg before preparing any audio.
+- **Cache after export (D26):** the exporters clear the book's render cache only when asked (`clear_cache`). The CLI clears it by default, and `--keep-cache` keeps it. The GUI (M4) keeps it while the book is still being edited.
+
 ---
 
 ## Dependency log
@@ -255,3 +282,4 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-16 | pdfplumber | MIT | runtime | PDF words with font size and position (D5, D32); pulls in pdfminer.six (MIT), pypdfium2 (BSD-3/Apache-2.0), Pillow (MIT-CMU) |
 | 2026-10-16 | reportlab | BSD | dev | Typesets the trap PDFs in `tools/make_trap_pdfs.py`; never shipped |
 | 2026-10-16 | soundfile | BSD-3-Clause (bundles libsndfile, LGPL-2.1) | runtime | FLAC paragraph cache (D33) |
+| 2026-10-16 | mutagen | GPL-2.0-or-later | dev | Reads back M4B chapters and tags and MP3 ID3 tags in `tests/test_export.py`; the bundled ffmpeg has no ffprobe or AAC/MP3 decoders. Never shipped |

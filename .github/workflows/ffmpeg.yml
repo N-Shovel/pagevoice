@@ -1,0 +1,82 @@
+# Build the bundled LGPL-only ffmpeg (DECISIONS D18) on Linux (ubuntu-22.04, old glibc)
+# and Windows (MSYS2 MINGW64), check its licence, and test the exporters with it.
+# The result is cached under a key made from the build script, so the CI workflow can
+# restore the same binary for the export tests. Not a required check.
+
+name: ffmpeg
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["packaging/ffmpeg/**", ".github/workflows/ffmpeg.yml"]
+  pull_request:
+    paths:
+      - "packaging/ffmpeg/**"
+      - ".github/workflows/ffmpeg.yml"
+      - "src/pagevoice/export/**"
+      - "tests/test_export.py"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ffmpeg (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache the built ffmpeg
+        id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packaging/ffmpeg/out
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('packaging/ffmpeg/build.sh') }}
+
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            make diffutils
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-zlib
+
+      - name: Build tools (Linux)
+        if: runner.os == 'Linux' && steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux' && steps.cache.outputs.cache-hit != 'true'
+        run: bash packaging/ffmpeg/build.sh
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash packaging/ffmpeg/build.sh
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Export tests with the built ffmpeg
+        shell: bash
+        run: |
+          uv sync --locked
+          uv run pytest tests/test_export.py -v
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ffmpeg-${{ runner.os }}
+          path: packaging/ffmpeg/out

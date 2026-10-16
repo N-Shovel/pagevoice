@@ -3,6 +3,8 @@
 pagevoice info BOOK                      chapters, flags and removals
 pagevoice download                       first-run model download (checksum-verified)
 pagevoice render BOOK --out DIR          render to the cache, write chapter audio
+pagevoice export BOOK --out FILE.m4b     render (resuming), then write the audiobook
+                 [--format mp3]          or one MP3 per chapter into a folder
 """
 
 import argparse
@@ -56,14 +58,13 @@ def cmd_download(args) -> int:
     return 0
 
 
-def cmd_render(args) -> int:
-    from pagevoice.audio import write_wav
+def _render(args):
+    """Render the book (resuming from the cache). Returns (renderer, result) or an exit code."""
     from pagevoice.ingest import read_book
     from pagevoice.pronounce.store import entries_for
     from pagevoice.render.cache import RenderCache
     from pagevoice.render.renderer import Renderer, RenderSettings
     from pagevoice.voice.engine import VoiceNotReady
-    from pagevoice.voice.kokoro import SAMPLE_RATE
 
     path = Path(args.book)
     book = read_book(path, language=args.language)
@@ -98,6 +99,18 @@ def cmd_render(args) -> int:
     for item, warning in result.warnings:
         print(f"  chapter {item.chapter + 1}, paragraph {item.paragraph + 1}: {warning}")
         print(f"    {item.spoken[:100]}")
+    return renderer, result
+
+
+def cmd_render(args) -> int:
+    from pagevoice.audio import write_wav
+    from pagevoice.voice.kokoro import SAMPLE_RATE
+
+    rendered = _render(args)
+    if isinstance(rendered, int):
+        return rendered
+    renderer, result = rendered
+    book = renderer.book
     out = Path(args.out)
     incomplete = False
     for index, chapter in enumerate(book.chapters):
@@ -111,6 +124,61 @@ def cmd_render(args) -> int:
         write_wav(target, audio, SAMPLE_RATE)
         print(f"  {target}  {chapter.title[:60]}")
     return 1 if result.failed or incomplete else 0
+
+
+def cmd_export(args) -> int:
+    from pagevoice.export.audiobook import Metadata, export_m4b, export_mp3
+    from pagevoice.export.ffmpeg import Cancelled, FfmpegError
+
+    rendered = _render(args)
+    if isinstance(rendered, int):
+        return rendered
+    renderer, result = rendered
+    if result.failed:
+        print(
+            f"{len(result.failed)} paragraphs failed to render, so the audiobook can't be "
+            "made yet. Run the same command again to retry them.",
+            file=sys.stderr,
+        )
+        return 1
+
+    def progress(step: str, fraction: float) -> None:
+        print(f"\r  {step}: {fraction:4.0%}   ", end="", flush=True)
+
+    meta = Metadata.from_book(renderer.book)
+    if problem := meta.cover_problem():
+        print(f"  {problem}")
+    stop = threading.Event()
+    options = dict(meta=meta, progress=progress, stop=stop, clear_cache=not args.keep_cache)
+    try:
+        if args.format == "mp3":
+            written = export_mp3(renderer, Path(args.out), **options)
+        else:
+            written = [export_m4b(renderer, Path(args.out), **options)]
+    except FfmpegError as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        return 2
+    except LookupError:  # a cached paragraph went missing or unreadable since rendering
+        print(
+            "\nSome rendered audio is missing from the cache. Run the same command again: "
+            "it renders what's missing, then exports.",
+            file=sys.stderr,
+        )
+        return 1
+    except (KeyboardInterrupt, Cancelled) as exc:
+        stop.set()
+        kept = getattr(exc, "written", [])
+        if kept:
+            print(f"\nStopped. The {len(kept)} chapters finished before that were kept.")
+        else:
+            print("\nStopped. No audiobook file was written.")
+        return 130
+    print()
+    for path in written:
+        print(f"  {path}")
+    if not args.keep_cache:
+        print("  The book's render cache was cleared. Use --keep-cache to keep it for edits.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -133,14 +201,27 @@ def main(argv: list[str] | None = None) -> int:
     info.add_argument("--language")
     download = sub.add_parser("download", help="download the voice (first run)")
     voice_options(download)
+
+    def book_options(p):
+        p.add_argument("book")
+        p.add_argument("--language")
+        p.add_argument("--speed", type=float, default=1.0)
+        p.add_argument("--chapters", help="e.g. 3 or 2-5")
+        p.add_argument("--pronunciations", help="a book's pronunciation list (TSV)")
+        voice_options(p)
+
     render = sub.add_parser("render", help="render a book to chapter audio files")
-    render.add_argument("book")
-    render.add_argument("--out", required=True)
-    render.add_argument("--language")
-    render.add_argument("--speed", type=float, default=1.0)
-    render.add_argument("--chapters", help="e.g. 3 or 2-5")
-    render.add_argument("--pronunciations", help="a book's pronunciation list (TSV)")
-    voice_options(render)
+    render.add_argument("--out", required=True, help="folder for the chapter WAV files")
+    book_options(render)
+    export = sub.add_parser("export", help="render a book and write the audiobook")
+    export.add_argument("--out", required=True, help="the .m4b file, or a folder for MP3s")
+    export.add_argument("--format", default="m4b", choices=["m4b", "mp3"])
+    export.add_argument(
+        "--keep-cache",
+        action="store_true",
+        help="keep the book's rendered audio after export (for further edits)",
+    )
+    book_options(export)
 
     args = parser.parse_args(argv)
     from pagevoice.document import IngestError
@@ -152,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_download(args)
         if args.command == "render":
             return cmd_render(args)
+        if args.command == "export":
+            return cmd_export(args)
     except IngestError as exc:
         print(exc, file=sys.stderr)
         return 2
