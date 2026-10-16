@@ -61,6 +61,12 @@ class Result:
     cached: int = 0
     cancelled: bool = False
     failed: list[tuple[Item, str]] = field(default_factory=list)
+    warnings: list[tuple[Item, str]] = field(default_factory=list)  # text the G2P dropped
+
+
+def _key_entry(entry: Entry) -> tuple:
+    """An entry as it affects the audio: its note doesn't."""
+    return tuple(sorted((k, v) for k, v in entry.as_dict().items() if k != "note"))
 
 
 class Renderer:
@@ -85,6 +91,7 @@ class Renderer:
 
     def plan(self) -> list[Item]:
         normalize = normalizer_for(self.book.language)
+        g2p = self.voice.g2p_name  # reads package metadata: once, not per paragraph
         items = []
         for c, chapter in enumerate(self.book.chapters):
             paragraphs = [p for p in chapter.paragraphs if p.text]
@@ -95,13 +102,13 @@ class Renderer:
                 spoken = applied.fill(normalize(applied.text))
                 parts = KeyParts(
                     text=spoken,
-                    entries=tuple(sorted(tuple(sorted(e.as_dict().items())) for e in applied.used)),
+                    entries=tuple(sorted(_key_entry(e) for e in applied.used)),
                     voice=self.voice.voice,
                     variant=self.voice.variant,
                     model_sha256=self.voice.model_entry.sha256,
                     voice_sha256=self.voice.voice_entry.sha256,
                     speed=self.settings.speed,
-                    g2p=self.voice.g2p_name,
+                    g2p=g2p,
                     language=self.book.language,
                 )
                 items.append(
@@ -138,7 +145,10 @@ class Renderer:
                 break
             t0 = time.perf_counter()
             try:
-                audio = self.voice.synthesize(self.voice.phonemes(item.spoken), self.settings.speed)
+                phonemes = self.voice.phonemes(item.spoken)
+                if warning := self.voice.g2p_warning:
+                    result.warnings.append((item, warning))
+                audio = self.voice.synthesize(phonemes, self.settings.speed)
             except Exception as exc:  # one bad paragraph mustn't stop the book
                 log.exception(
                     "Rendering failed for chapter %d paragraph %d", item.chapter, item.paragraph

@@ -6,6 +6,7 @@ import pytest
 
 from pagevoice.voice import download
 from pagevoice.voice.download import ChecksumError, ensure_file
+from pagevoice.voice.engine import VoiceNotReady, VoiceSetup
 from pagevoice.voice.kokoro import MAX_TOKENS, split_phonemes, tokenize
 from pagevoice.voice.manifest import PROPOSED, FileEntry, ManifestError, load_manifest
 
@@ -67,6 +68,14 @@ def test_corrupt_cached_file_is_replaced(tmp_path):
 def test_models_dir_override(tmp_path, monkeypatch):
     monkeypatch.setenv("PAGEVOICE_MODELS_DIR", str(tmp_path))
     assert download.models_dir() == tmp_path
+
+
+def test_incomplete_model_file_is_not_ready(tmp_path):
+    voice = VoiceSetup(load_manifest(PROPOSED), folder=tmp_path)
+    (tmp_path / voice.model_entry.name).write_bytes(b"truncated")
+    (tmp_path / voice.voice_entry.name).write_bytes(b"x" * voice.voice_entry.size)
+    with pytest.raises(VoiceNotReady):
+        voice.synthesize("hˈɛlO")
 
 
 def test_long_phonemes_split_under_the_token_limit():

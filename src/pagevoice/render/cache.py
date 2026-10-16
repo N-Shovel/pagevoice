@@ -12,6 +12,8 @@ import hashlib
 import json
 import logging
 import os
+import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,8 +23,9 @@ from platformdirs import user_cache_dir
 
 log = logging.getLogger(__name__)
 
-CACHE_VERSION = 1  # bump when rendering changes in a way the other key parts don't show
+CACHE_VERSION = 2  # bump when rendering changes in a way the other key parts don't show
 DEFAULT_CAP_BYTES = 5 * 2**30  # 5 GB
+STALE_TMP_SECONDS = 3600  # older temp files are left over from a crash
 
 
 def default_root() -> Path:
@@ -37,13 +40,13 @@ class KeyParts:
     """Everything that changes a paragraph's audio (.claude/rules/voice.md)."""
 
     text: str  # normalized text, pronunciation entries applied
-    entries: tuple  # the pronunciation entries that matched, as sorted tuples
+    entries: tuple  # the pronunciation entries that matched, as sorted tuples (no notes)
     voice: str
     variant: str
     model_sha256: str
     voice_sha256: str
     speed: float
-    g2p: str
+    g2p: str  # backend and package versions
     language: str
 
     def key(self) -> str:
@@ -85,11 +88,10 @@ class RenderCache:
     def put(self, key: str, audio: np.ndarray, sample_rate: int) -> None:
         path = self.path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
-        soundfile.write(
-            str(tmp), np.asarray(audio, dtype="float32"), sample_rate, format="FLAC",
-            subtype="PCM_16",
-        )  # fmt: skip
+        tmp = path.with_name(f"{path.stem}.{uuid.uuid4().hex}.tmp")
+        # PCM_16 wraps around past full scale, so a loud peak would become a click.
+        audio = np.clip(np.asarray(audio, dtype="float32"), -1.0, 1.0)
+        soundfile.write(str(tmp), audio, sample_rate, format="FLAC", subtype="PCM_16")
         os.replace(tmp, path)
 
     # --- per-book index and size cap ---
@@ -98,9 +100,12 @@ class RenderCache:
         return self.root / "books" / f"{book_id}.json"
 
     def remember(self, book_id: str, keys: list[str]) -> None:
+        """Add keys to the book's index. Earlier keys stay (other chapters, older edits),
+        so clearing the book after export removes all of its audio."""
         index = self._index(book_id)
-        tmp = index.with_name(index.name + ".tmp")
-        tmp.write_text(json.dumps(sorted(set(keys))), encoding="utf-8")
+        tmp = index.with_name(f"{index.name}.{uuid.uuid4().hex}.tmp")
+        merged = self.book_keys(book_id) | set(keys)
+        tmp.write_text(json.dumps(sorted(merged)), encoding="utf-8")
         os.replace(tmp, index)
 
     def book_keys(self, book_id: str) -> set[str]:
@@ -129,7 +134,17 @@ class RenderCache:
         return sum(p.stat().st_size for p in (self.root / "audio").rglob("*.flac"))
 
     def trim(self, protect: set[str] = frozenset()) -> int:
-        """Evict least recently used entries until under the cap. Returns bytes freed."""
+        """Evict least recently used entries until under the cap. Returns bytes freed.
+
+        Also deletes temp files a crash left behind (not recent ones: another render may
+        be writing them)."""
+        cutoff = time.time() - STALE_TMP_SECONDS
+        for tmp in self.root.rglob("*.tmp"):
+            try:
+                if tmp.stat().st_mtime < cutoff:
+                    tmp.unlink()
+            except OSError:
+                pass
         files = sorted(
             (p for p in (self.root / "audio").rglob("*.flac")), key=lambda p: p.stat().st_mtime
         )

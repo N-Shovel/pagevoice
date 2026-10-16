@@ -6,6 +6,7 @@ Two backends, compared in M0 (SPEC O1):
 - "espeak": espeak-ng only, mapped to Kokoro's phoneme set by misaki.
 """
 
+import importlib.metadata
 import importlib.util
 import logging
 from functools import cache
@@ -28,15 +29,37 @@ class EnglishG2P:
         self.backend = backend
         self.british = british
         self._g2p = _load(backend, british)
+        self.last_warning: str | None = None  # about the last call; for the render report
 
     def __call__(self, text: str) -> str:
         phonemes, _ = self._g2p(text)
         phonemes = phonemes or ""
+        self.last_warning = None
         if text.strip() and not phonemes.strip():
-            log.warning("G2P produced no phonemes for %r; it will be silent", text[:80])
-        if UNKNOWN in phonemes:
-            log.warning("G2P couldn't pronounce part of %r; that part will be silent", text[:80])
-        return phonemes
+            self.last_warning = "No speech could be made for this text; it will be silent."
+        elif UNKNOWN in phonemes:
+            self.last_warning = "Part of this text couldn't be pronounced; that part is silent."
+        if self.last_warning:
+            log.warning("%s %r", self.last_warning, text[:80])
+        return phonemes.replace(UNKNOWN, "")
+
+
+# Packages whose version changes the phonemes, so they belong in the render cache key.
+_PACKAGES = {
+    "misaki": ("misaki", "spacy", SPACY_MODEL, "espeakng-loader"),
+    "espeak": ("misaki", "espeakng-loader", "phonemizer-fork"),
+}
+
+
+def version(backend: str) -> str:
+    """'misaki=0.9.4 spacy=3.8.16 ...' for the cache key."""
+    parts = []
+    for package in _PACKAGES[backend]:
+        try:
+            parts.append(f"{package}={importlib.metadata.version(package)}")
+        except importlib.metadata.PackageNotFoundError:
+            parts.append(f"{package}=?")
+    return " ".join(parts)
 
 
 @cache

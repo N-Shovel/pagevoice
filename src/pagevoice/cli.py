@@ -95,12 +95,22 @@ def cmd_render(args) -> int:
         print("\nStopped. Run the same command again to carry on where it left off.")
         return 130
     print(f"\nRendered {result.rendered}, from cache {result.cached}, failed {len(result.failed)}.")
+    for item, warning in result.warnings:
+        print(f"  chapter {item.chapter + 1}, paragraph {item.paragraph + 1}: {warning}")
+        print(f"    {item.spoken[:100]}")
     out = Path(args.out)
+    incomplete = False
     for index, chapter in enumerate(book.chapters):
         target = out / f"{index + 1:03d}.wav"
-        write_wav(target, renderer.chapter_audio(index), SAMPLE_RATE)
+        try:
+            audio = renderer.chapter_audio(index)
+        except LookupError as exc:  # a paragraph failed: write the other chapters anyway
+            print(f"  skipped: {exc}", file=sys.stderr)
+            incomplete = True
+            continue
+        write_wav(target, audio, SAMPLE_RATE)
         print(f"  {target}  {chapter.title[:60]}")
-    return 1 if result.failed else 0
+    return 1 if result.failed or incomplete else 0
 
 
 def main(argv: list[str] | None = None) -> int:

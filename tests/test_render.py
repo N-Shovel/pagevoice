@@ -3,14 +3,16 @@
 A fake voice stands in for Kokoro so these run fast; test_voice.py covers the real one.
 """
 
+import os
 import threading
+import time
 
 import numpy as np
 import pytest
 
 from pagevoice.document import Book, Chapter, Paragraph
 from pagevoice.pronounce.lexicon import Entry
-from pagevoice.render.cache import KeyParts, RenderCache
+from pagevoice.render.cache import STALE_TMP_SECONDS, KeyParts, RenderCache
 from pagevoice.render.renderer import Renderer, RenderSettings
 from pagevoice.voice.engine import VoiceSetup
 from pagevoice.voice.manifest import PROPOSED, load_manifest
@@ -95,6 +97,7 @@ def test_pause_waits_until_released(voice, cache):
     pause.clear()
     assert done.wait(5)
     thread.join()
+    assert voice.calls == 3  # heading and both paragraphs, once released
 
 
 def test_one_failing_paragraph_does_not_stop_the_book(voice, cache):
@@ -119,6 +122,34 @@ def test_book_language_reaches_the_g2p(cache, monkeypatch):
     b.language = "en-GB"
     Renderer(b, voice, cache, book_id="b").run()
     assert seen == ["en", "en-GB"]
+
+
+def test_g2p_warnings_are_reported(cache):
+    class Dropping(FakeVoice):
+        g2p_warning = None
+
+        def phonemes(self, text):
+            self.g2p_warning = "Part of this text couldn't be pronounced." if "zz" in text.lower() else None
+            return text
+
+    voice = Dropping(manifest=load_manifest(PROPOSED))
+    result = Renderer(book("Fine.", "Zzxq here."), voice, cache, book_id="b").run()
+    assert [(item.source, warning) for item, warning in result.warnings] == [
+        ("Zzxq here.", "Part of this text couldn't be pronounced.")
+    ]
+
+
+def test_pronunciation_notes_do_not_change_the_key(voice, cache):
+    def key(note):
+        entries = [Entry("Hermione", "her-MY-oh-nee", note=note)]
+        r = Renderer(book("Hermione smiled."), voice, cache, book_id="b", pronunciations=entries)
+        return r.items[1].key
+
+    assert key("") == key("from the film")
+
+
+def test_g2p_package_versions_are_in_the_key(voice):
+    assert "misaki=0.9.4" in voice.g2p_name
 
 
 def test_notes_are_read_last_unless_dropped(voice, cache):
@@ -167,6 +198,30 @@ def test_cache_writes_are_atomic_and_trim_respects_the_cap(cache):
     cache.cap_bytes = 1
     cache.trim(protect={f"{4:064x}"})
     assert [p.stem for p in cache.root.rglob("*.flac")] == [f"{4:064x}"]
+
+
+def test_loud_audio_is_clipped_not_wrapped(cache):
+    cache.put("c" * 64, np.array([1.5, -1.5, 0.5], dtype=np.float32), 24000)
+    audio = cache.get("c" * 64)
+    assert audio[0] > 0.99 and audio[1] < -0.99 and abs(audio[2] - 0.5) < 1e-3
+
+
+def test_trim_removes_stale_temp_files_only(cache):
+    stale = cache.root / "audio" / "ab" / "x.old.tmp"
+    fresh = cache.root / "audio" / "ab" / "x.new.tmp"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"half")
+    fresh.write_bytes(b"half")
+    old = time.time() - 2 * STALE_TMP_SECONDS
+    os.utime(stale, (old, old))
+    cache.trim()
+    assert not stale.exists() and fresh.exists()
+
+
+def test_book_index_keeps_earlier_keys(cache):
+    cache.remember("one", ["a" * 64])  # e.g. chapter 1 rendered alone
+    cache.remember("one", ["b" * 64])  # then chapter 2
+    assert cache.book_keys("one") == {"a" * 64, "b" * 64}
 
 
 def test_clear_book_keeps_audio_other_books_use(cache):

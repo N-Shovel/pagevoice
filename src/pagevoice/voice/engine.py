@@ -49,8 +49,11 @@ class VoiceSetup:
     def _paths(self) -> tuple[Path, Path]:
         model = self.folder / self.model_entry.name
         voice = self.folder / self.voice_entry.name
-        if not (model.is_file() and voice.is_file()):
-            raise VoiceNotReady("The voice hasn't been downloaded yet.")
+        for path, entry in ((model, self.model_entry), (voice, self.voice_entry)):
+            # Size only: hashing the model on every call would take seconds. ready() and
+            # download() do the full checksum.
+            if not path.is_file() or path.stat().st_size != entry.size:
+                raise VoiceNotReady("The voice hasn't been downloaded yet, or is incomplete.")
         return model, voice
 
     def use_language(self, language: str) -> None:
@@ -75,7 +78,13 @@ class VoiceSetup:
         return self._kokoro.synthesize(phonemes, voice_path, speed)
 
     @property
-    def g2p_name(self) -> str:
-        from pagevoice.voice.g2p import DEFAULT_BACKEND
+    def g2p_warning(self) -> str | None:
+        """What the G2P couldn't pronounce in the last phonemes() call, in plain words."""
+        return getattr(self._g2p, "last_warning", None)
 
-        return self.g2p_backend or DEFAULT_BACKEND
+    @property
+    def g2p_name(self) -> str:
+        """The G2P backend and its package versions, for the render cache key."""
+        from pagevoice.voice.g2p import g2p_version
+
+        return g2p_version(self.language, self.g2p_backend)
