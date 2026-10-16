@@ -114,8 +114,9 @@ def main() -> int:
             return 0
         note = (
             f"Plan usage: {usage}. Pause now as docs/PAUSE_AND_RESUME.md says: start nothing "
-            "new, run the fast tests, commit to the current branch (no push), update "
-            'docs/PROGRESS.md, then stop and tell the owner to say "continue" after '
+            "new, run the fast tests, commit to the current branch, update "
+            "docs/PROGRESS.md, push the branch (never main), then stop and tell the owner "
+            'to say "continue" after '
             f"{resume_at}."
         )
     else:

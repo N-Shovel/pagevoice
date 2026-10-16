@@ -25,7 +25,7 @@ When the note appears:
 
 1. **Start nothing new.** If the current edit needs only a few more tool calls, finish it. Otherwise leave it where it is.
 2. **Run the fast tests** (`uv run pytest -m "not slow"`) and note the result.
-3. **Commit** everything to the current branch, never `main`. Unfinished work gets a message starting with `wip:`. Don't push. A local commit is enough, and a push would sit waiting for the owner's approval.
+3. **Commit** everything to the current branch, never `main`. Unfinished work gets a message starting with `wip:`.
 4. **Update docs/PROGRESS.md:**
    - set the state to "paused (usage)"
    - what's done
@@ -33,7 +33,7 @@ When the note appears:
    - the exact next step
    - anything the owner has to do
 
-   Commit it.
+   Commit it, then **push the branch** (`git push -u origin <branch>`, never `main`, never forced) so the work is backed up.
 5. **Stop** with one short message and nothing else, for example:
    `Paused at 91% of the 5-hour limit. It resets at 13:40. Say "continue" after that.`
 
