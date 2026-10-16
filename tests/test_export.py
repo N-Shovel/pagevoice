@@ -319,7 +319,7 @@ class FakeProcess:
     last: "FakeProcess"
 
     def __init__(self, *args, **kwargs):
-        self.stdout = iter(["out_time_us=500000\n", "out_time_us=900000\n"])
+        self.stdout = iter(["out_time_us=100000\n", "progress=end\n"])
         self.stderr = iter([])
         self.terminated = False
         FakeProcess.last = self
@@ -356,3 +356,11 @@ def test_cancel_stops_ffmpeg(monkeypatch):
     with pytest.raises(Cancelled):
         ffmpeg.run(["x"], stop=stop)
     assert FakeProcess.last.terminated
+
+
+def test_progress_reaches_the_end(monkeypatch):
+    monkeypatch.setattr(ffmpeg, "find_ffmpeg", lambda: Path("ffmpeg"))
+    monkeypatch.setattr(ffmpeg.subprocess, "Popen", FakeProcess)
+    seen = []
+    ffmpeg.run(["x"], duration=10.0, on_progress=seen.append)
+    assert seen == [0.01, 1.0]

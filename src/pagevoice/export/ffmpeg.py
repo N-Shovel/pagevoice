@@ -72,6 +72,9 @@ def run(
             match = re.match(r"out_time_us=(\d+)", line)
             if match and duration and on_progress:
                 on_progress(min(1.0, int(match.group(1)) / 1e6 / duration))
+            elif line.strip() == "progress=end" and on_progress:
+                # Updates come every half second, so a short file's last one can be near 0.
+                on_progress(1.0)
         code = process.wait()
     finally:
         # Cancelled, Ctrl+C or a failing callback: stop ffmpeg so it lets go of the
