@@ -45,18 +45,18 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **M2: PR #6** from `m2-speech`. CI passed. The spec-review findings are fixed (D33). Waiting for the owner to merge.
 - **M3: draft PR #7** from `m3-export`, built on `m2-speech`, so it shows M2's commits until #6 merges.
   - Done:
-    - The exporters, restored from 1c56c79 (M4B with chapters, cover and tags; MP3 per chapter).
-    - `tests/test_export.py`: 7 unit tests with a fake ffmpeg, plus 2 real-encode tests that read results back with mutagen (new dev dependency) and skip without the bundled ffmpeg.
-    - CLI `pagevoice export BOOK --out book.m4b [--format mp3]`.
-    - The exporters fail before preparing chapters if ffmpeg is missing.
-  - There's no ffmpeg on the laptop, so the real-encode tests only run in the `ffmpeg` workflow on PR #7.
-- **Fast tests:** 204 passed, 3 skipped.
+    - The exporters (M4B with chapters, cover and tags; MP3 per chapter).
+    - CLI `pagevoice export BOOK --out book.m4b [--format mp3] [--keep-cache]`.
+    - `tests/test_export.py`: 16 unit tests with a fake ffmpeg, plus 2 real-encode tests that use mutagen.
+  - The spec-reviewer ran. Its 1 violation (cache never cleared after export) and 11 concerns are fixed; see D34.
+  - The first CI ffmpeg build failed as the reviewer predicted: `--disable-autodetect` dropped zlib, so the PNG decoder was missing ("dimensions not set" for the cover). zlib is now enabled, and `build.sh` fails if a needed component is missing.
+  - The ffmpeg workflow is rebuilding with that fix. There's no ffmpeg on the laptop, so the real-encode tests run only there.
+- **Fast tests:** 213 passed, 3 skipped.
 
 ## Next step
-1. Check the `ffmpeg` workflow on PR #7, on both OSes: the build, the LGPL check, and the real M4B/MP3 tests. Fix what fails. Watch for whether the ipod muxer writes chapters that mutagen reads (`chpl`), and whether a PNG cover works as `attached_pic`.
-2. Fix the M3 spec-reviewer findings (the review was started on 2026-10-16; re-run it if its results were lost).
-3. Mark PR #7 ready once #6 is merged and the checks pass.
-4. Then M4 (GUI). Don't start M5.
+1. Check the `ffmpeg` workflow on PR #7, on both OSes: the build, the component and LGPL checks, and the real M4B/MP3 tests (QuickTime and Nero chapters, cover, `stik`). Fix what fails.
+2. When it's green and #6 is merged: mark PR #7 ready.
+3. Then M4 (GUI), on a new branch from `main`. Don't start M5.
 
 ## Waiting on the owner
 - **Model manifest:**
