@@ -8,7 +8,6 @@ pagevoice export BOOK --out FILE.m4b     render (resuming), then write the audio
 """
 
 import argparse
-import hashlib
 import sys
 import threading
 from collections import Counter
@@ -60,6 +59,7 @@ def cmd_download(args) -> int:
 
 def _render(args):
     """Render the book (resuming from the cache). Returns (renderer, result) or an exit code."""
+    from pagevoice import project
     from pagevoice.ingest import read_book
     from pagevoice.pronounce.store import entries_for
     from pagevoice.render.cache import RenderCache
@@ -67,18 +67,26 @@ def _render(args):
     from pagevoice.voice.engine import VoiceNotReady
 
     path = Path(args.book)
-    book = read_book(path, language=args.language)
+    book_id = project.book_id(path)
+    book = project.load(book_id) if not args.language else None
+    if book:
+        print("Using the review saved in the app for this book.")
+    else:
+        book = read_book(path, language=args.language)
     if args.chapters:
         first, _, last = args.chapters.partition("-")
         book.chapters = book.chapters[int(first) - 1 : int(last or first)]
-    book_id = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
     renderer = Renderer(
         book,
         _voice(args),
         RenderCache(),
         book_id=book_id,
         settings=RenderSettings(speed=args.speed),
-        pronunciations=entries_for(Path(args.pronunciations) if args.pronunciations else None),
+        pronunciations=entries_for(
+            Path(args.pronunciations)
+            if args.pronunciations
+            else project.pronunciations_path(book_id)
+        ),
     )
 
     def progress(p) -> None:

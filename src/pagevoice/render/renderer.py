@@ -25,6 +25,27 @@ from pagevoice.voice.kokoro import SAMPLE_RATE
 log = logging.getLogger(__name__)
 
 
+def spoken_text(text: str, entries: list[Entry], normalize) -> tuple[str, list[Entry]]:
+    """What the G2P gets for text: pronunciation entries swapped in, then normalized
+    (D33). Returns the text and the entries that matched."""
+    applied = apply(text, entries)
+    return applied.fill(normalize(applied.text)), applied.used
+
+
+def speak(
+    text: str,
+    voice: VoiceSetup,
+    *,
+    language: str = "en",
+    pronunciations: list[Entry] | None = None,
+    speed: float = 1.0,
+) -> np.ndarray:
+    """Say a short text exactly as a book would: for previews (SPEC §5)."""
+    voice.use_language(language)
+    spoken, _ = spoken_text(text, pronunciations or [], normalizer_for(language))
+    return voice.synthesize(voice.phonemes(spoken), speed)
+
+
 @dataclass(frozen=True)
 class RenderSettings:
     speed: float = 1.0  # provisional default (D31)
@@ -98,11 +119,10 @@ class Renderer:
             if not self.settings.drop_notes:
                 paragraphs += [p for p in chapter.notes if p.text]
             for i, paragraph in enumerate(paragraphs):
-                applied = apply(paragraph.text, self.pronunciations)
-                spoken = applied.fill(normalize(applied.text))
+                spoken, used = spoken_text(paragraph.text, self.pronunciations, normalize)
                 parts = KeyParts(
                     text=spoken,
-                    entries=tuple(sorted(_key_entry(e) for e in applied.used)),
+                    entries=tuple(sorted(_key_entry(e) for e in used)),
                     voice=self.voice.voice,
                     variant=self.voice.variant,
                     model_sha256=self.voice.model_entry.sha256,
