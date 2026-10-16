@@ -206,18 +206,24 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
   3. The placeholders are filled with the respelling or misaki's `[word](/phonemes/)` markup.
   4. G2P, then Kokoro.
   - This way a case-sensitive entry ("NASA") matches before normalization changes the word's case, and normalization never touches a respelling.
+  - Placeholders look like an ordinary word with the replaced word's capital, so "Dr. Jones" and "Henry VIII" keep their context when the name is in a list.
+  - Whole-word entries still match before "'s", "'ll" and inside quotes, but not after "O'" ("O'Brien").
+  - Per-book entries win over global ones wherever both match, even when their case settings differ.
+  - **Respellings are lowercased before the G2P** (provisional). misaki spells a capital syllable as letters ("DAR-see" became "D A R see") and ignores capitals for stress. Stress that matters goes in the phonemes column.
 - **Normalization is narrow on purpose.** Ambiguous patterns are left as printed. All 59 rows of `tests/voice/sentences.tsv` match word for word. misaki only ever sees words, so its own number reading never runs.
 - **Ambiguous abbreviations:**
   - "Dr." and "St." mean Doctor or Saint before a name, and Drive or Street after a capitalised word or a number.
-  - A Roman numeral is read as a cardinal after words like Chapter, War or Part, and as "the Eighth" after a name ("Henry VIII"). A lone "I" is never converted after a name.
-  - All-capital words are read as words, except a short list of initialisms and vowel-less words, which are spelled out.
+  - A Roman numeral is read as a cardinal after words like Chapter, War or Part, and as "the Eighth" after a name ("Henry VIII"). A lone "I" is never converted after a name, nor after a lowercase keyword when a word follows ("the letter I sent").
+  - All-capital words are read as words, except a short list of initialisms and vowel-less words, which are spelled out. "US" is spelled out unless the line is in capitals.
+- **Years:** a 4-digit number (1100–2099) is read as a year only with context: a cue word before it (in, by, since, of, a month...), a year before "and"/"to", the start of a sentence, the end of a clause, or an era. Otherwise it's a count ("had 1500 soldiers"). Dates like 12/25/1990 are read number by number, never as fractions.
 - **Render cache:**
   - One FLAC file per paragraph, via soundfile (BSD-3-Clause, bundles libsndfile LGPL-2.1).
-  - The file is named by a SHA-256 of the normalized text, the matched entries, voice, variant, model and voice checksums, speed, G2P backend, language and a cache version.
-  - Writes are atomic. The default cap is 5 GB, with least-recently-used eviction that never evicts the current book's paragraphs.
-  - Each book's key index lets its cache be cleared after export (D26).
+  - The file is named by a SHA-256 of the normalized text, the matched entries, voice, variant, model and voice checksums, speed, G2P backend and its package versions, language and a cache version. Notes on pronunciation entries aren't part of it.
+  - Writes are atomic, with unique temp names; temp files left by a crash are removed after an hour. Audio is clipped before 16-bit FLAC. The default cap is 5 GB, with least-recently-used eviction that never evicts the current book's paragraphs.
+  - Each book's key index (added to, never overwritten) lets its cache be cleared after export (D26).
 - **Rendering:**
   - One failing paragraph is logged and skipped; it doesn't stop the book.
+  - The voice reads in the book's language (en-GB gets British G2P). Text the G2P can't pronounce is reported per paragraph.
   - The ETA comes from characters per second measured in the current run.
   - Pauses: 0.45 s between paragraphs, 1 s after headings and 1.5 s at chapter end. These are provisional until the owner listens.
 
