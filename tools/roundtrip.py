@@ -103,21 +103,32 @@ def to_16k(path: Path):
 
 
 def render(sentences: list[Sentence], args: argparse.Namespace, out_dir: Path) -> list[Path]:
+    """Render through the engine: normalizer, pronunciation lists and the paragraph cache,
+    so reruns are cheap and the check sees exactly what a book would get."""
     from pagevoice.audio import write_wav
-    from pagevoice.voice.download import ensure_file
-    from pagevoice.voice.g2p import g2p_for
-    from pagevoice.voice.kokoro import SAMPLE_RATE, Kokoro
+    from pagevoice.document import Book, Chapter, Paragraph
+    from pagevoice.pronounce.store import entries_for
+    from pagevoice.render.cache import RenderCache
+    from pagevoice.render.renderer import Renderer
+    from pagevoice.voice.engine import VoiceSetup
+    from pagevoice.voice.kokoro import SAMPLE_RATE
     from pagevoice.voice.manifest import load_manifest
 
     manifest = load_manifest(allow_proposed=True)
-    use_source = manifest.is_proposed
-    model = Kokoro(ensure_file(manifest.model_entry(args.variant), use_source=use_source))
-    voice = ensure_file(manifest.voice_entry(args.voice), use_source=use_source)
-    g2p = g2p_for("en", args.g2p)
+    voice = VoiceSetup(manifest, variant=args.variant, voice=args.voice, g2p_backend=args.g2p)
+    if not voice.ready():
+        voice.download(use_source=manifest.is_proposed)
+    book = Book(
+        title="sentences",
+        chapters=[Chapter("sentences", [Paragraph.plain(s.text) for s in sentences])],
+    )
+    renderer = Renderer(book, voice, RenderCache(), book_id="roundtrip-sentences",
+                        pronunciations=entries_for())  # fmt: skip
+    renderer.run()
     paths = []
-    for index, sentence in enumerate(sentences, 1):
+    for index, (sentence, item) in enumerate(zip(sentences, renderer.items, strict=True), 1):
         path = out_dir / "audio" / f"{index:02d}-{sentence.id}.wav"
-        write_wav(path, model.synthesize(g2p(sentence.text), voice), SAMPLE_RATE)
+        write_wav(path, renderer.cache.get(item.key), SAMPLE_RATE)
         paths.append(path)
     return paths
 

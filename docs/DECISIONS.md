@@ -199,6 +199,30 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
 
 *Why:* nothing is deleted silently (rule 2), and a wrong guess costs the user a click in review, not a garbled audiobook.
 
+### D33. How M2 turns text into audio (2026-10-16)
+- **Order:**
+  1. Pronunciation entries are swapped in as placeholders.
+  2. The text is normalized for the book's language (`normalize/en.py`).
+  3. The placeholders are filled with the respelling or misaki's `[word](/phonemes/)` markup.
+  4. G2P, then Kokoro.
+  - This way a case-sensitive entry ("NASA") matches before normalization changes the word's case, and normalization never touches a respelling.
+- **Normalization is narrow on purpose.** Ambiguous patterns are left as printed. All 59 rows of `tests/voice/sentences.tsv` match word for word. misaki only ever sees words, so its own number reading never runs.
+- **Ambiguous abbreviations:**
+  - "Dr." and "St." mean Doctor or Saint before a name, and Drive or Street after a capitalised word or a number.
+  - A Roman numeral is read as a cardinal after words like Chapter, War or Part, and as "the Eighth" after a name ("Henry VIII"). A lone "I" is never converted after a name.
+  - All-capital words are read as words, except a short list of initialisms and vowel-less words, which are spelled out.
+- **Render cache:**
+  - One FLAC file per paragraph, via soundfile (BSD-3-Clause, bundles libsndfile LGPL-2.1).
+  - The file is named by a SHA-256 of the normalized text, the matched entries, voice, variant, model and voice checksums, speed, G2P backend, language and a cache version.
+  - Writes are atomic. The default cap is 5 GB, with least-recently-used eviction that never evicts the current book's paragraphs.
+  - Each book's key index lets its cache be cleared after export (D26).
+- **Rendering:**
+  - One failing paragraph is logged and skipped; it doesn't stop the book.
+  - The ETA comes from characters per second measured in the current run.
+  - Pauses: 0.45 s between paragraphs, 1 s after headings and 1.5 s at chapter end. These are provisional until the owner listens.
+
+*Why:* the cache is what makes crash-resume and one-paragraph fixes cheap (D16), so anything that changes the audio has to change the key.
+
 ---
 
 ## Dependency log
@@ -224,3 +248,4 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-16 | faster-whisper | MIT | roundtrip | Transcribes rendered audio for the round-trip check; never shipped. The whole group (94 packages, including av, ctranslate2, tokenizers) passed `check_licenses.py` with `--group roundtrip`; CI checks only the default groups |
 | 2026-10-16 | pdfplumber | MIT | runtime | PDF words with font size and position (D5, D32); pulls in pdfminer.six (MIT), pypdfium2 (BSD-3/Apache-2.0), Pillow (MIT-CMU) |
 | 2026-10-16 | reportlab | BSD | dev | Typesets the trap PDFs in `tools/make_trap_pdfs.py`; never shipped |
+| 2026-10-16 | soundfile | BSD-3-Clause (bundles libsndfile, LGPL-2.1) | runtime | FLAC paragraph cache (D33) |
