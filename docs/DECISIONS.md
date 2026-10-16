@@ -255,3 +255,4 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-16 | pdfplumber | MIT | runtime | PDF words with font size and position (D5, D32); pulls in pdfminer.six (MIT), pypdfium2 (BSD-3/Apache-2.0), Pillow (MIT-CMU) |
 | 2026-10-16 | reportlab | BSD | dev | Typesets the trap PDFs in `tools/make_trap_pdfs.py`; never shipped |
 | 2026-10-16 | soundfile | BSD-3-Clause (bundles libsndfile, LGPL-2.1) | runtime | FLAC paragraph cache (D33) |
+| 2026-10-16 | mutagen | GPL-2.0-or-later | dev | Reads back M4B chapters and tags and MP3 ID3 tags in `tests/test_export.py`; the bundled ffmpeg has no ffprobe or AAC/MP3 decoders. Never shipped |

@@ -19,7 +19,7 @@ from pathlib import Path
 import soundfile
 
 from pagevoice import __version__
-from pagevoice.export.ffmpeg import run
+from pagevoice.export.ffmpeg import find_ffmpeg, run
 from pagevoice.render.renderer import Renderer
 from pagevoice.voice.kokoro import SAMPLE_RATE
 
@@ -87,6 +87,7 @@ def export_m4b(
     stop: threading.Event | None = None,
 ) -> Path:
     """One M4B with chapters, cover and metadata. Every paragraph must be rendered."""
+    find_ffmpeg()  # fail before minutes of chapter preparation, not after
     meta = meta or Metadata.from_book(renderer.book)
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -153,6 +154,7 @@ def export_mp3(
     stop: threading.Event | None = None,
 ) -> list[Path]:
     """One MP3 per chapter, numbered so they sort in order, tagged, with the cover."""
+    find_ffmpeg()
     meta = meta or Metadata.from_book(renderer.book)
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)

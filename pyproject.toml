@@ -26,6 +26,7 @@ pagevoice = "pagevoice.cli:main"
 
 [dependency-groups]
 dev = [
+    "mutagen>=1.47",
     "pip-licenses>=5",
     "psutil>=6",
     "reportlab>=4",
