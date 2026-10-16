@@ -87,3 +87,21 @@ def join_lines(lines: list[tuple[str, Location]], counts: Counter[str]) -> list[
         if last.reason is None:
             last.text = last.text.rstrip()
     return spans
+
+
+def split_markers(spans: list[Span], pattern: re.Pattern) -> list[Span]:
+    """Turn note markers inside kept spans ("[1]") into FOOTNOTE_MARKER removals."""
+    out: list[Span] = []
+    for span in spans:
+        if span.reason is not None or not pattern.search(span.text):
+            out.append(span)
+            continue
+        pos = 0
+        for match in pattern.finditer(span.text):
+            if match.start() > pos:
+                out.append(Span(span.text[pos : match.start()], location=span.location))
+            out.append(Span(match.group(0), Reason.FOOTNOTE_MARKER, span.location))
+            pos = match.end()
+        if pos < len(span.text):
+            out.append(Span(span.text[pos:], location=span.location))
+    return out

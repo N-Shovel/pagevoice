@@ -10,8 +10,11 @@ CALIBRE = (
 )
 
 
-def read_book(path: Path, *, language: str = "en") -> Book:
-    """Read any supported file. Raises IngestError with a plain message otherwise."""
+def read_book(path: Path, *, language: str | None = None) -> Book:
+    """Read any supported file. Raises IngestError with a plain message otherwise.
+
+    language overrides what the file says; without either, the book is English.
+    """
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".txt":

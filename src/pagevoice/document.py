@@ -24,6 +24,8 @@ class Reason(StrEnum):
     HYPHEN = "hyphen"  # a line-break hyphen taken out when a word was rejoined
     MULTI_COLUMN = "multi_column"  # page flagged; its text isn't read until the user says so
     NO_TEXT = "no_text"  # scanned page with no text layer
+    FIGURE = "figure"  # picture text: image descriptions, SVG text, maths
+    NON_LINEAR = "non_linear"  # EPUB documents outside the reading order (pop-ups, extras)
 
 
 @dataclass
@@ -31,6 +33,7 @@ class Location:
     page: int | None = None  # 1-based page number in the source (PDF), if any
     top: float | None = None  # distance from the top of the page, in points
     part: str | None = None  # file inside an EPUB, if any
+    block: int | None = None  # blank-line-separated block number in a TXT file, if any
 
 
 @dataclass

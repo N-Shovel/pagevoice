@@ -186,11 +186,16 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
   - `boilerplate` (Project Gutenberg licence text, publishers' imprint and colophon pages)
   - `hyphen` (a line-break hyphen taken out when a word is rejoined)
   - `multi_column`
+  - `figure` (image descriptions, SVG text, MathML and its `alttext`)
+  - `non_linear` (EPUB documents outside the reading order; notes cited from them are still moved to their chapter)
   - All are restorable like the others.
 - **Multi-column pages** (D14) are flagged, and their text is kept as `multi_column` removals. Column-interleaved text is never read unless the user restores it. Detection looks for a vertical channel of white space that at most one line in ten crosses, with real text on both sides.
 - **Paragraph breaks in PDFs** need the previous line to end a sentence, or a blank line between them. The text layers of OCR'd scans shift words and guess font sizes, so indents alone are too noisy.
 - **Chapters from text patterns** (D13) need a larger font as well. A scan whose OCR layer gives every line the same size therefore comes out as one chapter, and the user splits it in review.
 - **The golden corpus** holds public books by checksum, plus trap PDFs made by `tools/make_trap_pdfs.py`. That script typesets known text, so its candidate pages come from the source text, not from PageVoice's output.
+
+- **Language:** each file's own language (`dc:language`, the PDF's `/Lang`, Gutenberg's `Language:` field) is carried into `Book.language`, normalised (`eng`/`English` → `en`). A non-English book is refused with a plain message, and the caller can override a wrong label.
+- **Copy-protected PDFs (provisional):** a PDF that opens with an empty password but forbids copying text is refused, with the same message as a password-protected one. Restrictions on printing alone are fine. The owner may decide this is too strict.
 
 *Why:* nothing is deleted silently (rule 2), and a wrong guess costs the user a click in review, not a garbled audiobook.
 
