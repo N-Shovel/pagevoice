@@ -42,37 +42,18 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The resilient corpus fetch missed the merge; it's on `m2-speech`.
 
 ## In progress
-- **M2 on `m2-speech`:** finished (commit ef71412) and spec-reviewed, but the review findings aren't fixed yet. No PR opened yet, on purpose: fix the findings first, because the owner merges as soon as CI passes.
-- **M3 started on the same branch:** commit 1c56c79, `wip:`, untested.
-  - Files:
-    - `packaging/ffmpeg/build.sh` (LGPL-only ffmpeg 8.1.3 + LAME 3.100, checksums pinned)
-    - `.github/workflows/ffmpeg.yml`
-    - `src/pagevoice/export/` (`ffmpeg.py` finds the bundled ffmpeg, never PATH; `audiobook.py` writes the M4B and the MP3s)
-  - These should move to their own `m3-export` branch after M2 merges (cherry-pick 1c56c79).
-- **Fast tests:** 176 passed, 1 skipped.
+- **M2 on `m2-speech`:** the spec-review findings are all fixed (2 violations, 14 concerns). Details are in D33. Fast tests: 197 passed, 1 skipped. Slow tests: 4 passed.
+  - Respellings are now lowercased before the G2P: misaki spelled capital syllables as letters ("DAR-see" became "D A R see") and ignores capitals for stress anyway.
+  - The M3 work-in-progress (1c56c79) is reverted on this branch so it stays out of the M2 PR.
+- **M2 PR:** opened from `m2-speech`; merge when CI passes.
 
 ## Next step
-1. **Fix the M2 spec-review findings on `m2-speech`.** Violations:
-   - Pass the book's language to the G2P: in `Renderer`, set `voice.language` from `book.language`. Test that an en-GB book reaches the G2P as British.
-   - Per-book entries must win over global ones even with different case settings: sort book entries first on equal length, or drop global entries whose word matches case-insensitively. Add a test.
-2. **Then the M2 concerns:**
-   - Report text the G2P drops (`Result.warnings`).
-   - Clip audio before writing PCM_16 FLAC.
-   - Possessives and quotes in whole-word matching ("Hermione's").
-   - A lone "I" after lowercase keywords ("the letter I sent").
-   - Placeholders hide name context from "Dr."/"Henry VIII".
-   - Size check in `VoiceSetup._paths`.
-   - G2P versions in the cache key; drop `note` from the key.
-   - Merge the book index, don't overwrite it.
-   - uuid temp names, and clean stale `*.tmp`.
-   - "US" should be spelled out.
-   - Only read 4-digit numbers as years with context; leave dates like 12/25/1990 alone.
-   - The pause test asserts nothing.
-   - CLI: catch `LookupError` per chapter.
-   - `roundtrip.py`: no personal pronunciation list; handle failed rows; report both WERs.
-   - Ask the owner whether notes get a spoken "Notes" heading.
-   - A slow test of respellings through misaki.
-3. Open the M2 PR, merge when CI passes. Then M3: test the exporters (`tests/test_export.py`, with mutagen as a dev dependency to read M4B chapters and tags), run the ffmpeg workflow, add the CLI `export` command, run the spec-reviewer. Then M4 (GUI). Don't start M5.
+1. When the M2 PR is merged: create `m3-export` from `main` and `git cherry-pick 1c56c79`. That brings back:
+   - `packaging/ffmpeg/build.sh` (LGPL-only ffmpeg 8.1.3 + LAME 3.100, checksums pinned)
+   - `.github/workflows/ffmpeg.yml`
+   - `src/pagevoice/export/` (`ffmpeg.py` finds the bundled ffmpeg, never PATH; `audiobook.py` writes the M4B and the MP3s)
+2. M3: test the exporters (`tests/test_export.py`, with mutagen as a dev dependency to read M4B chapters and tags), run the ffmpeg workflow, add the CLI `export` command, run the spec-reviewer, open the PR.
+3. Then M4 (GUI). Don't start M5.
 
 ## Waiting on the owner
 - **Model manifest:**
@@ -95,6 +76,8 @@ Claude Code keeps this file current. It updates it after every finished step and
     - Real books: PageVoice's output, checked against page images by Claude.
     - The OCR books keep the text layer's spelling errors.
 - **Notes in audio:** should notes at a chapter's end get a spoken "Notes" heading or a longer pause? (M2 review, item 16)
+- **Stress in respellings:** capitals in a "sounds like" respelling no longer mark stress (misaki never used them). Is that OK, or should the GUI preview steer people to the phonemes column for stress? (D33)
+- **Years with context (D33):** "had 1500 soldiers" is now a count, and "1914 changed everything" or "It was 1945." are years. Listen for misreadings in real books.
 - **Copy-protected PDFs (D32, provisional):** a PDF that forbids copying text is refused. Say if that's too strict.
 - **Installer size:** the G2P stack (spaCy + English model + espeak-ng) is well over the skill's ~20 MB line for runtime packages. SPEC O1 expected this, but it needs the owner's OK.
 
