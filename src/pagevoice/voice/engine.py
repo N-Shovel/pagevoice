@@ -1,5 +1,6 @@
 """The voice as the renderer sees it: verified model files, G2P and Kokoro, loaded lazily."""
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,9 @@ class VoiceSetup:
     folder: Path = field(default_factory=models_dir)
     _kokoro: object = None
     _g2p: Callable[[str], str] | None = None
+    _verified: bool = False  # ready() passed once; later checks only look at the sizes
+    # One voice can serve a render and a preview at once: G2P and synthesis take turns.
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 
     @property
     def model_entry(self):
@@ -38,8 +42,14 @@ class VoiceSetup:
         return self.manifest.voice_entry(self.voice)
 
     def ready(self) -> bool:
-        """True if both files are present and pass their checksums (hashes ~300 MB)."""
-        return all(is_valid(self.folder / e.name, e) for e in (self.model_entry, self.voice_entry))
+        """True if both files are present and pass their checksums. That hashes ~300 MB the
+        first time; after it has passed once, only the sizes are checked."""
+        entries = (self.model_entry, self.voice_entry)
+        if self._verified:
+            paths = [(self.folder / e.name, e) for e in entries]
+            return all(p.is_file() and p.stat().st_size == e.size for p, e in paths)
+        self._verified = all(is_valid(self.folder / e.name, e) for e in entries)
+        return self._verified
 
     def download(self, progress: Progress | None = None, *, use_source: bool = False) -> None:
         """The first-run download: the only network access in PageVoice."""
@@ -58,24 +68,27 @@ class VoiceSetup:
 
     def use_language(self, language: str) -> None:
         """Read in this language from now on (a book's language, e.g. 'en-GB')."""
-        if language != self.language:
-            self.language = language
-            self._g2p = None
+        with self._lock:
+            if language != self.language:
+                self.language = language
+                self._g2p = None
 
     def phonemes(self, text: str) -> str:
-        if self._g2p is None:
-            from pagevoice.voice.g2p import g2p_for
+        with self._lock:
+            if self._g2p is None:
+                from pagevoice.voice.g2p import g2p_for
 
-            self._g2p = g2p_for(self.language, self.g2p_backend)
-        return self._g2p(text)
+                self._g2p = g2p_for(self.language, self.g2p_backend)
+            return self._g2p(text)
 
     def synthesize(self, phonemes: str, speed: float = 1.0) -> np.ndarray:
         model_path, voice_path = self._paths()
-        if self._kokoro is None:
-            from pagevoice.voice.kokoro import Kokoro
+        with self._lock:
+            if self._kokoro is None:
+                from pagevoice.voice.kokoro import Kokoro
 
-            self._kokoro = Kokoro(model_path, provider=self.provider)
-        return self._kokoro.synthesize(phonemes, voice_path, speed)
+                self._kokoro = Kokoro(model_path, provider=self.provider)
+            return self._kokoro.synthesize(phonemes, voice_path, speed)
 
     @property
     def g2p_warning(self) -> str | None:

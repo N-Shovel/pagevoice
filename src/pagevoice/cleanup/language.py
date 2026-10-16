@@ -8,6 +8,17 @@ NOT_SUPPORTED = (
     "This book is marked as {name}. PageVoice reads English books only for now. If the "
     "book really is in English, open it again and choose English as its language."
 )
+
+
+class LanguageNotSupported(IngestError):
+    """A book in (or labelled as) a language v1 can't read. The caller may override a wrong
+    label by passing language="en" (D32)."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(NOT_SUPPORTED.format(name=name))
+        self.name = name
+
+
 _ALIASES = {"eng": "en", "english": "en"}
 
 
@@ -30,7 +41,7 @@ def book_language(found: str | None, override: str | None = None) -> str:
     """
     chosen = normalize(override or found or "en") or "en"
     if base_of(chosen) != "en":
-        raise IngestError(NOT_SUPPORTED.format(name=found or chosen))
+        raise LanguageNotSupported(found or chosen)
     return chosen
 
 
@@ -39,4 +50,4 @@ def rules_for(language: str) -> ModuleType:
         from pagevoice.cleanup import en
 
         return en
-    raise IngestError(NOT_SUPPORTED.format(name=language))
+    raise LanguageNotSupported(language)

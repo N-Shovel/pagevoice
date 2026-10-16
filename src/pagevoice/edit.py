@@ -3,7 +3,7 @@ merge and split chapters. Nothing here deletes text: a merge keeps every paragra
 restore only flips a flag the user can flip back.
 """
 
-from pagevoice.document import Book, Chapter, Span
+from pagevoice.document import Book, Chapter, MergedTitle, Span
 
 
 class EditError(ValueError):
@@ -31,25 +31,43 @@ def merge_with_next(book: Book, index: int) -> None:
     if index + 1 >= len(book.chapters):
         raise EditError("The last chapter has no next chapter to merge with.")
     second = book.chapters.pop(index + 1)
+    offset = len(first.paragraphs)
+    first.merged.append(MergedTitle(offset, second.title, second.start_page))
+    first.merged += [
+        MergedTitle(m.paragraph + offset, m.title, m.start_page) for m in second.merged
+    ]
     first.paragraphs += second.paragraphs
     first.notes += second.notes
 
 
 def split_at(book: Book, index: int, paragraph: int, title: str | None = None) -> None:
-    """Start a new chapter at a paragraph of chapter index. The new chapter's title is the
-    given one, or that paragraph's text if it's a heading, or "Chapter N".
+    """Start a new chapter at a paragraph of chapter index. Its title is the given one, else
+    the title it had before a merge, else that paragraph's text if it's a heading. With none
+    of those, EditError asks for one: the engine doesn't invent titles in any language.
 
     Notes stay with the first part: they're tied to markers that can't be placed reliably."""
     chapter = _chapter(book, index)
     if not 0 < paragraph < len(chapter.paragraphs):
         raise EditError("Split at a paragraph inside the chapter, not at its first one.")
+    before = next((m for m in chapter.merged if m.paragraph == paragraph), None)
     head = chapter.paragraphs[paragraph]
     if title is None:
-        heading = head.text if head.kind == "heading" else ""
-        title = heading or f"Chapter {index + 2}"
-    new = Chapter(title=" ".join(title.split()), paragraphs=chapter.paragraphs[paragraph:])
+        title = before.title if before else (head.text if head.kind == "heading" else "")
+    title = " ".join((title or "").split())
+    if not title:
+        raise EditError("Give the new chapter a title.")
+    new = Chapter(title=title, paragraphs=chapter.paragraphs[paragraph:])
     pages = [s.location.page for p in new.paragraphs for s in p.spans if s.location.page]
-    new.start_page = pages[0] if pages else None
+    if before and before.start_page:
+        new.start_page = before.start_page
+    else:
+        new.start_page = pages[0] if pages else None
+    new.merged = [
+        MergedTitle(m.paragraph - paragraph, m.title, m.start_page)
+        for m in chapter.merged
+        if m.paragraph > paragraph
+    ]
+    chapter.merged = [m for m in chapter.merged if m.paragraph < paragraph]
     chapter.paragraphs = chapter.paragraphs[:paragraph]
     book.chapters.insert(index + 1, new)
 

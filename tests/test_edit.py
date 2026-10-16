@@ -75,10 +75,25 @@ def test_split_takes_the_heading_as_title():
         split_at(book, 0, 0)
 
 
-def test_split_without_heading_gets_a_numbered_title():
+def test_split_without_heading_needs_a_title():
     book = small_book()
-    split_at(book, 0, 2)
-    assert book.chapters[1].title == "Chapter 2"
+    with pytest.raises(EditError, match="title"):
+        split_at(book, 0, 2)  # the engine doesn't make up English titles (rule 7)
+    split_at(book, 0, 2, title="Part B")
+    assert book.chapters[1].title == "Part B"
+
+
+def test_split_after_merge_restores_the_old_title():
+    book = small_book()
+    book.chapters[1].title = "Two, from the bookmarks"  # not the heading text
+    book.chapters[1].start_page = 7
+    merge_with_next(book, 0)
+    merge_with_next(book, 0)
+    split_at(book, 0, 3)
+    assert book.chapters[1].title == "Two, from the bookmarks"
+    assert book.chapters[1].start_page == 7
+    split_at(book, 1, 2)  # where "Three" began, remembered across the first split
+    assert [c.title for c in book.chapters] == ["One", "Two, from the bookmarks", "Three"]
 
 
 def test_review_edits_survive_save_and_load(tmp_path, monkeypatch):
@@ -97,10 +112,13 @@ def test_review_edits_survive_save_and_load(tmp_path, monkeypatch):
     assert project.load(key) is None
 
 
-def test_unreadable_saved_review_means_a_fresh_start(tmp_path, monkeypatch):
+def test_unreadable_saved_review_is_kept_and_reported(tmp_path, monkeypatch):
     monkeypatch.setenv("PAGEVOICE_PROJECTS_DIR", str(tmp_path))
     (tmp_path / "abc.json").write_text('{"format": 999}', encoding="utf-8")
-    assert project.load("abc") is None
+    with pytest.raises(project.SavedReviewUnreadable) as info:
+        project.load("abc")
+    assert info.value.backup.read_text(encoding="utf-8") == '{"format": 999}'
+    assert project.load("abc") is None  # moved aside: the next open starts fresh
     assert project.load("missing") is None
 
 
