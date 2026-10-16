@@ -127,7 +127,7 @@ def cmd_render(args) -> int:
 
 
 def cmd_export(args) -> int:
-    from pagevoice.export.audiobook import export_m4b, export_mp3
+    from pagevoice.export.audiobook import Metadata, export_m4b, export_mp3
     from pagevoice.export.ffmpeg import Cancelled, FfmpegError
 
     rendered = _render(args)
@@ -145,22 +145,39 @@ def cmd_export(args) -> int:
     def progress(step: str, fraction: float) -> None:
         print(f"\r  {step}: {fraction:4.0%}   ", end="", flush=True)
 
+    meta = Metadata.from_book(renderer.book)
+    if problem := meta.cover_problem():
+        print(f"  {problem}")
     stop = threading.Event()
+    options = dict(meta=meta, progress=progress, stop=stop, clear_cache=not args.keep_cache)
     try:
         if args.format == "mp3":
-            written = export_mp3(renderer, Path(args.out), progress=progress, stop=stop)
+            written = export_mp3(renderer, Path(args.out), **options)
         else:
-            written = [export_m4b(renderer, Path(args.out), progress=progress, stop=stop)]
+            written = [export_m4b(renderer, Path(args.out), **options)]
     except FfmpegError as exc:
         print(f"\n{exc}", file=sys.stderr)
         return 2
-    except (KeyboardInterrupt, Cancelled):
+    except LookupError:  # a cached paragraph went missing or unreadable since rendering
+        print(
+            "\nSome rendered audio is missing from the cache. Run the same command again: "
+            "it renders what's missing, then exports.",
+            file=sys.stderr,
+        )
+        return 1
+    except (KeyboardInterrupt, Cancelled) as exc:
         stop.set()
-        print("\nStopped. No audiobook file was written.")
+        kept = getattr(exc, "written", [])
+        if kept:
+            print(f"\nStopped. The {len(kept)} chapters finished before that were kept.")
+        else:
+            print("\nStopped. No audiobook file was written.")
         return 130
     print()
     for path in written:
         print(f"  {path}")
+    if not args.keep_cache:
+        print("  The book's render cache was cleared. Use --keep-cache to keep it for edits.")
     return 0
 
 
@@ -199,6 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     export = sub.add_parser("export", help="render a book and write the audiobook")
     export.add_argument("--out", required=True, help="the .m4b file, or a folder for MP3s")
     export.add_argument("--format", default="m4b", choices=["m4b", "mp3"])
+    export.add_argument(
+        "--keep-cache",
+        action="store_true",
+        help="keep the book's rendered audio after export (for further edits)",
+    )
     book_options(export)
 
     args = parser.parse_args(argv)

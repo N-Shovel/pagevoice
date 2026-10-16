@@ -176,7 +176,7 @@ def real_ffmpeg():
 
 
 def test_real_m4b_has_chapters_cover_and_tags(real_ffmpeg, renderer, tmp_path):
-    from mutagen.mp4 import MP4
+    from mutagen.mp4 import MP4, Atoms
 
     progress = []
     target = export_m4b(
@@ -186,10 +186,15 @@ def test_real_m4b_has_chapters_cover_and_tags(real_ffmpeg, renderer, tmp_path):
     assert audio.tags["\xa9nam"] == ["The Lantern; a Tale = Light"]
     assert audio.tags["\xa9ART"] == ["A. N. Author"]
     assert audio.tags["\xa9gen"] == ["Audiobook"]
+    assert audio.tags["stik"] == [2]  # audiobook media type
     assert len(audio.tags["covr"]) == 1
     assert audio.info.channels == 1
     assert audio.info.length == pytest.approx(sum(chapter_seconds(renderer)), abs=0.2)
-    chapters = audio.chapters
+    with target.open("rb") as fh:  # QuickTime chapter track (Apple Books, iOS)
+        moov = Atoms(fh)[b"moov"]
+    traks = moov.findall(b"trak")
+    assert any(tref.findall(b"chap") for trak in traks for tref in trak.findall(b"tref"))
+    chapters = audio.chapters  # Nero "chpl" chapters (most other players)
     assert [c.title for c in chapters] == ["One: The Start", 'Two / "Middle"?', "Three"]
     seconds = chapter_seconds(renderer)
     assert chapters[1].start == pytest.approx(seconds[0], abs=0.05)
@@ -221,3 +226,133 @@ def test_missing_ffmpeg_fails_before_preparing_chapters(renderer, tmp_path, monk
         export_m4b(renderer, tmp_path / "book.m4b")
     with pytest.raises(FfmpegError):
         export_mp3(renderer, tmp_path / "mp3")
+
+
+def test_cache_is_cleared_only_when_asked(renderer, tmp_path, monkeypatch):
+    monkeypatch.setattr(audiobook, "run", FakeRun())
+    keys = [item.key for item in renderer.items]
+    export_m4b(renderer, tmp_path / "a.m4b")
+    assert all(renderer.cache.has(k) for k in keys)
+    export_m4b(renderer, tmp_path / "b.m4b", clear_cache=True)
+    assert not any(renderer.cache.has(k) for k in keys)
+    assert renderer.cache.book_keys("export") == set()
+
+
+def test_work_files_go_next_to_the_cache_not_system_temp(renderer, tmp_path, monkeypatch):
+    fake = FakeRun()
+    monkeypatch.setattr(audiobook, "run", fake)
+    export_m4b(renderer, tmp_path / "a.m4b")
+    args = fake.calls[0]
+    concat_list = Path(args[args.index("concat") + 4])
+    assert concat_list.name == "list.txt"
+    assert concat_list.is_relative_to(renderer.cache.root)
+    assert not list(renderer.cache.root.glob("export-*"))  # cleaned up
+
+
+def test_language_and_media_type(renderer, tmp_path, monkeypatch):
+    fake = FakeRun()
+    monkeypatch.setattr(audiobook, "run", fake)
+    export_m4b(renderer, tmp_path / "a.m4b")
+    assert "language=eng" in fake.calls[0]
+    assert "media_type=2" in fake.files["meta.txt"].splitlines()
+    export_mp3(renderer, tmp_path / "mp3")
+    assert "language=eng" in fake.calls[1]
+    assert Metadata("t", language="en-GB").language_code() == "eng"
+    assert Metadata("t", language="xx").language_code() is None
+
+
+def test_unsupported_cover_is_reported(renderer, tmp_path, monkeypatch, caplog):
+    fake = FakeRun()
+    monkeypatch.setattr(audiobook, "run", fake)
+    meta = Metadata("t", cover=b"GIF89a", cover_type="image/gif")
+    assert "GIF" in meta.cover_problem()
+    assert Metadata("t", cover=tiny_png(), cover_type="image/png").cover_problem() is None
+    export_m4b(renderer, tmp_path / "a.m4b", meta=meta)
+    assert "attached_pic" not in fake.calls[0]
+    assert "no cover art" in caplog.text
+
+
+def test_mp3_reexport_removes_old_chapter_files_only(renderer, tmp_path, monkeypatch):
+    monkeypatch.setattr(audiobook, "run", FakeRun())
+    folder = tmp_path / "mp3"
+    folder.mkdir()
+    (folder / "004 - Old Chapter.mp3").write_bytes(b"old")
+    (folder / "notes.txt").write_text("mine")
+    (folder / "My favourite.mp3").write_bytes(b"mine")
+    written = export_mp3(renderer, folder)
+    assert sorted(p.name for p in folder.iterdir()) == sorted(
+        [p.name for p in written] + ["notes.txt", "My favourite.mp3"]
+    )
+
+
+def test_cancelled_mp3_export_keeps_finished_chapters(renderer, tmp_path, monkeypatch):
+    fake = FakeRun()
+
+    def run(args, *, stop=None, **kwargs):
+        if stop.is_set():
+            raise Cancelled
+        fake(args, **kwargs)
+        stop.set()  # the user stops after the first chapter is encoded
+
+    monkeypatch.setattr(audiobook, "run", run)
+    with pytest.raises(Cancelled) as info:
+        export_mp3(renderer, tmp_path / "mp3", stop=threading.Event())
+    assert [p.name for p in info.value.written] == ["001 - One The Start.mp3"]
+    assert [p.name for p in (tmp_path / "mp3").iterdir()] == ["001 - One The Start.mp3"]
+
+
+def test_env_override_is_ignored_in_the_installed_app(tmp_path, monkeypatch):
+    fake = tmp_path / ffmpeg.EXE
+    fake.write_bytes(b"")
+    monkeypatch.setenv("PAGEVOICE_FFMPEG", str(fake))
+    monkeypatch.setattr(ffmpeg, "REPO", tmp_path / "nowhere")
+    assert find_ffmpeg() == fake  # development
+    monkeypatch.setattr(ffmpeg.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(ffmpeg.sys, "_MEIPASS", str(tmp_path / "bundle"), raising=False)
+    with pytest.raises(FfmpegError):
+        find_ffmpeg()
+
+
+class FakeProcess:
+    """Stands in for the ffmpeg process: two progress lines, and it runs until stopped."""
+
+    last: "FakeProcess"
+
+    def __init__(self, *args, **kwargs):
+        self.stdout = iter(["out_time_us=500000\n", "out_time_us=900000\n"])
+        self.stderr = iter([])
+        self.terminated = False
+        FakeProcess.last = self
+
+    def poll(self):
+        return 0 if self.terminated else None
+
+    def terminate(self):
+        self.terminated = True
+
+    kill = terminate
+
+    def wait(self, timeout=None):
+        return 0
+
+
+def test_ffmpeg_is_stopped_when_a_callback_fails(monkeypatch):
+    monkeypatch.setattr(ffmpeg, "find_ffmpeg", lambda: Path("ffmpeg"))
+    monkeypatch.setattr(ffmpeg.subprocess, "Popen", FakeProcess)
+
+    def broken(_fraction):
+        raise RuntimeError("the window was closed")
+
+    with pytest.raises(RuntimeError):
+        ffmpeg.run(["x"], duration=1.0, on_progress=broken)
+    assert FakeProcess.last.terminated
+
+
+def test_cancel_stops_ffmpeg(monkeypatch):
+    monkeypatch.setattr(ffmpeg, "find_ffmpeg", lambda: Path("ffmpeg"))
+    monkeypatch.setattr(ffmpeg.subprocess, "Popen", FakeProcess)
+    stop = threading.Event()
+    stop.set()
+    with pytest.raises(Cancelled):
+        ffmpeg.run(["x"], stop=stop)
+    assert FakeProcess.last.terminated

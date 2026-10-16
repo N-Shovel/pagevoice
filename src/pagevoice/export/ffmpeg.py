@@ -27,9 +27,11 @@ class Cancelled(Exception):
 
 def find_ffmpeg() -> Path:
     candidates = []
-    if os.environ.get("PAGEVOICE_FFMPEG"):
+    frozen = getattr(sys, "frozen", False)
+    # Development only: the installed app never runs an ffmpeg it didn't ship with (D18).
+    if os.environ.get("PAGEVOICE_FFMPEG") and not frozen:
         candidates.append(Path(os.environ["PAGEVOICE_FFMPEG"]))
-    if getattr(sys, "frozen", False):  # the installed app (M5 bundles it here)
+    if frozen:  # the installed app (M5 bundles it here)
         base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
         candidates.append(base / "ffmpeg" / EXE)
     platform_dir = {"nt": "windows"}.get(os.name, "macos" if sys.platform == "darwin" else "linux")
@@ -63,15 +65,24 @@ def run(
     errors: list[str] = []
     reader = threading.Thread(target=lambda: errors.extend(process.stderr), daemon=True)
     reader.start()
-    for line in process.stdout:
-        if stop is not None and stop.is_set():
+    try:
+        for line in process.stdout:
+            if stop is not None and stop.is_set():
+                raise Cancelled
+            match = re.match(r"out_time_us=(\d+)", line)
+            if match and duration and on_progress:
+                on_progress(min(1.0, int(match.group(1)) / 1e6 / duration))
+        code = process.wait()
+    finally:
+        # Cancelled, Ctrl+C or a failing callback: stop ffmpeg so it lets go of the
+        # partial file (Windows can't delete a file another process has open).
+        if process.poll() is None:
             process.terminate()
-            process.wait()
-            raise Cancelled
-        match = re.match(r"out_time_us=(\d+)", line)
-        if match and duration and on_progress:
-            on_progress(min(1.0, int(match.group(1)) / 1e6 / duration))
-    code = process.wait()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
     reader.join(timeout=5)
     if code != 0:
         detail = "".join(errors).strip()[-500:]

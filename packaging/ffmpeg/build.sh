@@ -62,6 +62,10 @@ rm -rf "$WORK/ffmpeg-$FFMPEG_VERSION"
 tar -xJf "$WORK/ffmpeg-$FFMPEG_VERSION.tar.xz" -C "$WORK"
 EXTRA_LDFLAGS="-L$PREFIX/lib"
 [ "$OS" = windows ] && EXTRA_LDFLAGS="$EXTRA_LDFLAGS -static"
+# --disable-autodetect also drops threads and zlib, so both are named here. zlib (zlib
+# licence) is needed by the PNG decoder, which the muxers need for a PNG cover's size.
+THREADS="--enable-pthreads"
+[ "$OS" = windows ] && THREADS="--enable-w32threads"
 (
   cd "$WORK/ffmpeg-$FFMPEG_VERSION"
   ./configure \
@@ -69,7 +73,7 @@ EXTRA_LDFLAGS="-L$PREFIX/lib"
     --disable-everything --disable-autodetect --disable-network --disable-doc \
     --disable-debug --disable-ffplay --disable-ffprobe --disable-shared --enable-static \
     --enable-small --disable-x86asm --enable-ffmpeg --enable-avfilter --enable-swresample \
-    --enable-libmp3lame \
+    --enable-libmp3lame --enable-zlib $THREADS \
     --enable-encoder=aac,libmp3lame \
     --enable-decoder=pcm_s16le,flac,png,mjpeg \
     --enable-muxer=ipod,mp4,mp3 \
@@ -84,6 +88,16 @@ EXTRA_LDFLAGS="-L$PREFIX/lib"
   cp LICENSE.md "$OUT/licenses/ffmpeg-LICENSE.md"
 )
 cp "$WORK/lame-$LAME_VERSION/COPYING" "$OUT/licenses/lame-COPYING"
+
+# Everything the exporters use must be in the binary (configure only warns when it drops a
+# component whose dependency is missing).
+for need in "decoders png" "decoders mjpeg" "decoders flac" "encoders aac"   "encoders libmp3lame" "muxers ipod" "muxers mp3"; do
+  set -- $need
+  if ! "$OUT/bin/ffmpeg$EXE" -hide_banner "-$1" | grep -qE "^ [A-Z.]+ +$2( |$)"; then
+    echo "ffmpeg was built without $2 ($1); refusing to ship it" >&2
+    exit 1
+  fi
+done
 
 # The bundled binary must be LGPL: check what it says about itself.
 "$OUT/bin/ffmpeg$EXE" -hide_banner -L | tee "$OUT/licenses/ffmpeg-L.txt" | head -3
