@@ -3,8 +3,8 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-16
-- **Milestone:** M4, GUI (draft PR #8). M0–M3 are done except the owner items below.
-- **Branch:** m4-gui
+- **Milestone:** M4, GUI. PR #8 merged; its review fixes are in a follow-up PR. M0–M3 are done except the owner items below.
+- **Branch:** m4-review-fixes
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
@@ -52,7 +52,7 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The spec-review fixes are in D34.
 
 ## In progress
-- **M4: PR #8** from `m4-gui`.
+- **M4:** PR #8 is merged (first version); the follow-up PR from `m4-review-fixes` has the review fixes.
   - What it is: the desktop app (`pagevoice-gui`): open → review → pronunciations → render → export, with every slow job off the UI thread. See D35.
   - Spec review: done. All 7 violations and 14 concerns are fixed, including:
     - review saves and big chapters no longer block the UI
@@ -68,8 +68,9 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Fast tests:** 251 passed, 3 skipped (25 GUI tests, headless).
 
 ## Next step
-1. When CI passes on PR #8, mark it ready for the owner. On 2026-10-16 GitHub didn't pick up the pushes after 0c4e4ce, although the branch itself was updated. If the PR still shows 0c4e4ce, close and reopen it (the owner's call) so CI runs on the review fixes. Locally: lint, formatting, the license check and 251 fast tests pass.
-2. Don't start M5.
+1. Get the follow-up PR from `m4-review-fixes` merged once CI passes.
+   - GitHub merged PR #8 at 0c4e4ce, the first GUI version, because the PR never picked up the later pushes. The spec-review fixes and the progress notes (5 commits) weren't in `main`; the follow-up PR carries them.
+2. Then M4 is done. Don't start M5.
 
 ## Waiting on the owner
 - **Model manifest:**
