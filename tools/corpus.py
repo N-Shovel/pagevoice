@@ -32,8 +32,13 @@ def fetch() -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         print(f"Fetching {book.id} from {source}")
         request = urllib.request.Request(source, headers={"User-Agent": "PageVoice corpus"})
-        with urllib.request.urlopen(request, timeout=120) as response:
-            data = response.read()
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                data = response.read()
+        except OSError as exc:  # one unreachable site mustn't stop the others
+            print(f"  could not fetch {book.id}: {exc}")
+            failed += 1
+            continue
         digest = hashlib.sha256(data).hexdigest()
         if digest != book.meta.get("sha256"):
             print(f"  checksum mismatch for {book.id}: got {digest}; not saved")
