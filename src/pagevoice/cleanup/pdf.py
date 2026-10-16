@@ -21,7 +21,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from pagevoice.cleanup.chapters import finish_chapters
-from pagevoice.cleanup.language import rules_for
+from pagevoice.cleanup.language import book_language, rules_for
 from pagevoice.cleanup.text import should_rejoin, word_counts
 from pagevoice.document import Book, Chapter, Location, PageFlag, Paragraph, Reason, Span
 from pagevoice.ingest.pdf import Extracted, Line, Page
@@ -124,7 +124,8 @@ def _find_headers_footers(pages: list[Page], layout: Layout, rules) -> None:
     for page in text_pages:
         for top in (True, False):
             for line in _edge_lines(page, top)[:1]:
-                if _PAGE_NUMBER.match(line.text.strip()):
+                small = line.size <= 1.05 * layout.body_size
+                if small and _PAGE_NUMBER.match(line.text.strip()):
                     layout.roles[id(line)] = Role(Reason.PAGE_NUMBER)
     if len(text_pages) < 3:
         return
@@ -142,11 +143,11 @@ def _find_headers_footers(pages: list[Page], layout: Layout, rules) -> None:
             for line in _edge_lines(page, top):
                 text = line.text.strip()
                 isolated = _isolated(page, line, layout.line_gap, top)
+                if line.size > 1.05 * layout.body_size or rules.is_chapter_heading(text):
+                    break  # a heading, not a running head or page number
                 if _PAGE_NUMBER.match(text):
                     layout.roles[id(line)] = Role(Reason.PAGE_NUMBER)
                     continue
-                if line.size > 1.05 * layout.body_size or rules.is_chapter_heading(text):
-                    break  # a heading, not a running head
                 slot = _slot(page, line)
                 in_slot = any(slots[s] >= slot_need for s in (slot - 1, slot, slot + 1))
                 if (
@@ -345,7 +346,8 @@ class _Builder:
             self.pending.append(paragraph)
 
 
-def build_book(extracted: Extracted, *, fallback_title: str, language: str) -> Book:
+def build_book(extracted: Extracted, *, fallback_title: str, language: str | None) -> Book:
+    language = book_language(extracted.language, language)
     rules = rules_for(language)
     pages = extracted.pages
     layout = analyse(pages, rules)
@@ -364,7 +366,7 @@ def build_book(extracted: Extracted, *, fallback_title: str, language: str) -> B
 
     counts = word_counts(line.text for page in pages for line in page.lines)
     builder = _Builder(counts)
-    notes: list[Paragraph] = []  # in page order; each note knows its page
+    note_builder = _Builder(counts)  # footnotes, joined like body text
     prev: Line | None = None
     drop_cap_bottom: float | None = None  # lines beside a drop cap are indented
     drop_cap_page = 0
@@ -376,18 +378,17 @@ def build_book(extracted: Extracted, *, fallback_title: str, language: str) -> B
         for line in page.lines:
             role = layout.roles.get(id(line))
             location = Location(page=page.number, top=round(line.top, 1))
-            if role and role.note:
-                text = _text_of(_line_spans(line, layout)).strip()
-                if _NOTE_START.match(text + " ") or not notes:
-                    notes.append(Paragraph([Span(text, location=location)], kind="note"))
-                else:  # a note running on from the line (or page) before
-                    notes[-1].spans.append(Span(" " + text, location=location))
-                continue
             if role and role.reason:
                 builder.removal(line.text, role.reason, location, now=False)
                 continue
-            if page.number in layout.multi_column:
+            if page.number in layout.multi_column:  # notes too: never read interleaved
                 builder.removal(line.text, Reason.MULTI_COLUMN, location, now=False)
+                continue
+            if role and role.note:
+                spans = _line_spans(line, layout)
+                starts = bool(_NOTE_START.match(_text_of(spans).strip() + " "))
+                # A note without a marker runs on from the line (or page) before.
+                note_builder.add_line(spans, "note", starts or not note_builder.current)
                 continue
             kind = "heading" if line.size >= 1.15 * body else "text"
             beside_drop_cap = (
@@ -402,6 +403,8 @@ def build_book(extracted: Extracted, *, fallback_title: str, language: str) -> B
             builder.add_line(_line_spans(line, layout), kind, new)
             prev = line
     builder.close()
+    note_builder.close()
+    notes = note_builder.paragraphs
 
     paragraphs = builder.paragraphs
     for paragraph in paragraphs:
@@ -454,7 +457,9 @@ def _chapters(
 ) -> list[Chapter]:
     front: list[Paragraph] = []
     chapters: list[Chapter] = []
-    bookmarks = sorted({page: name for name, page in extracted.bookmarks}.items())
+    bookmarks = sorted(
+        ((page, name) for name, page in extracted.bookmarks), key=lambda mark: mark[0]
+    )
     use_bookmarks = len(bookmarks) >= 2
     marks = iter(bookmarks)
     next_mark = next(marks, None)

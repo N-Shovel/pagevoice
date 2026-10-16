@@ -322,3 +322,142 @@ def test_pdf_word_export_reads_in_position_order():
     assert text[0].startswith("The keeper climbed the stair each evening")
     assert reasons(book)[Reason.PAGE_NUMBER] == 2
     assert not book.chapters[0].notes
+
+
+# --- review fixes (M1 spec review) --------------------------------------------------
+
+INNER_ID = """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<body><h1>Chapter One</h1>
+<p>Text with a note<a epub:type="noteref" href="#fn1">1</a> here.</p>
+<p>A picture: <img src="p.png" alt="A lighthouse at night"/> and maths
+<math alttext="x squared"><mi>x</mi></math>.</p>
+<h2><img src="h.png" alt="Chapter Two Begins"/></h2>
+<p>Gutenberg style<a class="fnanchor" href="#Footnote_2">[2]</a> marker.</p>
+<aside epub:type="footnote"><p id="fn1">The note, with its id inside.</p></aside>
+<div class="footnote"><p><a id="Footnote_2" href="#FNanchor_2" class="label">[2]</a>
+A Gutenberg note.</p></div>
+</body></html>"""
+POPUP_SPINE = OPF.replace('<itemref idref="notes"/>', '<itemref idref="notes" linear="no"/>')
+
+
+def test_epub_note_with_inner_id_moves_to_the_end(tmp_path):
+    book = read_book(_rebuild(tmp_path, {"OEBPS/text/one.xhtml": INNER_ID}))
+    one = book.chapters[0]
+    body = " ".join(one.readable(drop_notes=True))
+    assert "The note, with its id inside" not in body
+    assert "A Gutenberg note" not in body and "[2]" not in body
+    notes = " ".join(n.text for n in one.notes)
+    assert "The note, with its id inside." in notes and "A Gutenberg note." in notes
+    assert "Chapter Two Begins" in body  # heading drawn as a picture is read
+    figures = [s.text for s in all_spans(book) if s.reason is Reason.FIGURE]
+    assert "A lighthouse at night" in figures and any("x squared" in f for f in figures)
+
+
+def _rebuild(tmp_path: Path, replace: dict[str, str], opf: str = OPF) -> Path:
+    path = tmp_path / "rebuilt.epub"
+    files = {
+        "META-INF/container.xml": CONTAINER,
+        "OEBPS/content.opf": opf,
+        "OEBPS/nav.xhtml": NAV,
+        "OEBPS/text/one.xhtml": ONE,
+        "OEBPS/text/two.xhtml": TWO,
+        "OEBPS/text/notes.xhtml": NOTES,
+        **replace,
+    }
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", "application/epub+zip")
+        for name, text in files.items():
+            z.writestr(name, text)
+    return path
+
+
+def test_epub_non_linear_notes_are_found_and_the_rest_kept(tmp_path):
+    book = read_book(_rebuild(tmp_path, {}, opf=POPUP_SPINE))
+    assert any("An endnote" in n.text for n in book.chapters[0].notes)
+    kept = [s.text for s in all_spans(book) if s.reason is Reason.NON_LINEAR]
+    assert any("Never cited" in t for t in kept)  # not read, not lost
+    assert not any("Never cited" in t for c in book.chapters for t in c.readable())
+
+
+def test_non_english_books_are_refused_plainly(tmp_path):
+    french = OPF.replace("<dc:language>en</dc:language>", "<dc:language>fr</dc:language>")
+    with pytest.raises(IngestError, match="English books only"):
+        read_book(_rebuild(tmp_path, {}, opf=french))
+    # The reader can override a wrong label.
+    assert read_book(_rebuild(tmp_path, {}, opf=french), language="en").language == "en"
+
+
+def test_language_codes_are_normalised(tmp_path):
+    for code in ("eng", "English", "en_GB"):
+        opf = OPF.replace(">en</dc:language>", f">{code}</dc:language>")
+        assert read_book(_rebuild(tmp_path, {}, opf=opf)).language.startswith("en")
+
+
+GUTENBERG_NOTES = """CHAPTER I.
+
+The lamp was lit[1] and the sea was calm.[A]
+
+[Footnote 1: Whale oil, in those days.]
+
+[Footnote A: A note that runs
+
+over two blocks.]
+
+The night went on.
+"""
+
+
+def test_txt_gutenberg_footnotes(tmp_path):
+    path = tmp_path / "notes.txt"
+    path.write_text(GUTENBERG_NOTES, encoding="utf-8")
+    chapter = read_book(path).chapters[0]
+    body = chapter.readable(drop_notes=True)
+    assert body == ["CHAPTER I.", "The lamp was lit and the sea was calm.", "The night went on."]
+    notes = [n.text for n in chapter.notes]
+    assert notes[0].startswith("Whale oil") and "over two blocks." in notes[1]
+
+
+def test_txt_unclosed_illustration_stops(tmp_path):
+    text = "CHAPTER I.\n\n[Illustration: never closed\n\n" + "\n\n".join(
+        f"Paragraph {n} of the story." for n in range(10)
+    )
+    path = tmp_path / "open.txt"
+    path.write_text(text, encoding="utf-8")
+    readable = read_book(path).chapters[0].readable()
+    assert "Paragraph 9 of the story." in readable  # the book isn't silenced
+
+
+def test_txt_locations_are_blocks(tmp_path):
+    path = tmp_path / "book.txt"
+    path.write_text(GUTENBERG, encoding="utf-8")
+    removal = next(s for s in all_spans(read_book(path)) if s.reason)
+    assert removal.location.block is not None and removal.location.top is None
+
+
+def test_copy_protected_pdf_is_refused(tmp_path):
+    from reportlab.lib.pdfencrypt import StandardEncryption
+    from reportlab.pdfgen.canvas import Canvas
+
+    path = tmp_path / "locked.pdf"
+    canvas = Canvas(str(path), encrypt=StandardEncryption("", canCopy=0))
+    canvas.drawString(72, 700, "A protected page of text.")
+    canvas.save()
+    with pytest.raises(IngestError, match="protected"):
+        read_book(path)
+
+
+def test_two_bookmarks_on_one_page_both_survive(tmp_path):
+    from reportlab.pdfgen.canvas import Canvas
+
+    path = tmp_path / "marks.pdf"
+    canvas = Canvas(str(path))
+    for number, titles in enumerate([["Part One", "The Start"], ["The Middle"]]):
+        for index, title in enumerate(titles):
+            key = f"k{number}{index}"
+            canvas.bookmarkPage(key)
+            canvas.addOutlineEntry(title, key, level=0)
+        canvas.drawString(72, 700, f"Text on page {number + 1}.")
+        canvas.showPage()
+    canvas.save()
+    titles = [c.title for c in read_book(path).chapters]
+    assert any("Part One" in t for t in titles) and any("The Start" in t for t in titles)

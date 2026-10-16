@@ -39,7 +39,16 @@ Claude Code keeps this file current. It updates it after every finished step and
   - Repairs: drop caps, small caps, ligatures and soft hyphens.
   - Scanned and multi-column pages are flagged.
   - Seven trap PDFs and five public books are in the corpus. 23 candidate pages match PageVoice's output.
-  - Next: the spec-reviewer, then the PR.
+  - Spec-reviewer: 3 violations fixed, and its code concerns fixed:
+    - EPUB notes with an inner id
+    - non-linear EPUB documents
+    - SVG, MathML and image alt text
+    - PDF note markers and hyphens
+    - notes on multi-column pages
+    - language handling, copy-protected PDFs, same-page bookmarks
+    - Gutenberg footnotes, unclosed markers and TXT locations
+  - PR #4: merge when CI passes.
+  - M1 isn't fully "done" (golden corpus passes) until the owner approves golden pages.
 
 ## Next step
 - Merge M1. Then M2 (speech): `normalize/en.py` driven by `tests/voice/sentences.tsv`, pronunciation lists, and the paragraph render cache with resume.
@@ -60,6 +69,7 @@ Claude Code keeps this file current. It updates it after every finished step and
     - Trap PDFs: the text they were typeset from.
     - Real books: PageVoice's output, checked against page images by Claude.
     - The OCR books keep the text layer's spelling errors.
+- **Copy-protected PDFs (D32, provisional):** a PDF that forbids copying text is refused. Say if that's too strict.
 - **Installer size:** the G2P stack (spaCy + English model + espeak-ng) is well over the skill's ~20 MB line for runtime packages. SPEC O1 expected this, but it needs the owner's OK.
 
 ## Notes for next time

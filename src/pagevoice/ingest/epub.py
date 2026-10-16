@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import unquote
 from xml.etree import ElementTree
 
-from pagevoice.cleanup.language import rules_for
+from pagevoice.cleanup.language import book_language, rules_for
 from pagevoice.cleanup.text import fix_characters
 from pagevoice.document import Book, Chapter, IngestError, Location, Paragraph, Reason, Span
 
@@ -38,7 +38,8 @@ BLOCK = {
     "footer", "table", "figure", "ol", "ul", "dl", "body", "nav", "hr",
 }  # fmt: skip
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
-SKIP = {"head", "script", "style", "svg", "math", "title"}
+SKIP = {"head", "script", "style", "title"}  # never book text
+FIGURES = {"svg", "math"}  # their text is kept, as FIGURE removals
 NOTE_TYPES = ("footnote", "endnote", "rearnote", "note")  # whole words: not "endnotes"
 DOC_NOTE_ROLES = {"doc-footnote", "doc-endnote"}
 # Project Gutenberg's licence header/footer, and publishers' imprint pages.
@@ -55,6 +56,11 @@ class Block:
     ids: list[str] = field(default_factory=list)
     note_id: str | None = None  # set when the block belongs to a footnote/endnote
     refs: list[str] = field(default_factory=list)  # hrefs of note references in it
+
+
+def _internal(attrs: dict[str, str | None]) -> bool:
+    href = attrs.get("href") or ""
+    return bool(href) and "://" not in href
 
 
 def _types(attrs: dict[str, str | None]) -> str:
@@ -80,7 +86,7 @@ class _Extractor(HTMLParser):
         kind, note_id = "text", None
         for tag, info in self.stack:
             if info.get("note"):
-                kind, note_id = "note", info.get("id") or note_id
+                kind, note_id = "note", info.get("note_id") or note_id
             if tag in HEADINGS and kind != "note":
                 kind = "heading"
         return kind, note_id
@@ -125,12 +131,17 @@ class _Extractor(HTMLParser):
             return
         info: dict = {}
         types = _types(attrs)
+        classes = (attrs.get("class") or "").lower()
+        words = set(types.split())
         if attrs.get("id"):
             self.pending_ids.append(attrs["id"])
             info["id"] = attrs["id"]
-        if set(types.split()) & set(NOTE_TYPES) or set(types.split()) & DOC_NOTE_ROLES:
+            note = self._open_note()
+            if note is not None and not note.get("note_id"):
+                note["note_id"] = attrs["id"]  # <aside epub:type="footnote"><p id="fn1">
+        if words & set(NOTE_TYPES) or words & DOC_NOTE_ROLES or "footnote" in classes.split():
             info["note"] = True
-        classes = (attrs.get("class") or "").lower()
+            info["note_id"] = attrs.get("id")
         if tag == "table":
             info["reason"] = Reason.TABLE
         elif tag in ("figcaption", "caption") or "caption" in classes.split():
@@ -141,11 +152,21 @@ class _Extractor(HTMLParser):
             or any(t in types for t in BOILERPLATE_TYPES)
         ):
             info["reason"] = Reason.BOILERPLATE
-        if tag == "a" and ("noteref" in types or self._looks_like_noteref(attrs)):
+        if tag in FIGURES:
+            info["reason"] = Reason.FIGURE
+            if attrs.get("alttext"):  # MathML's spoken-form hint
+                self.stack.append((tag, info))
+                self._text(attrs["alttext"] + " ")
+                self.stack.pop()
+        in_note = self._open_note() is not None
+        if tag == "a" and (
+            "noteref" in types or "fnanchor" in classes.split() or self._looks_like_noteref(attrs)
+        ):
             self.noteref += 1
             info["noteref"] = True
             self.refs.append(attrs.get("href") or "")
-        elif tag == "a" and "backlink" in types:  # the "return to text" arrow in a note
+        elif tag == "a" and ("backlink" in types or (in_note and _internal(attrs))):
+            # The "return to text" arrow or label inside a note
             self.noteref += 1
             info["noteref"] = True
         elif tag == "a" and attrs.get("href") and "://" not in attrs["href"]:
@@ -153,14 +174,22 @@ class _Extractor(HTMLParser):
         if tag in BLOCK:
             self._flush()
         if tag == "img":
-            # A drop cap drawn as a picture of its letter: keep the letter.
             alt = (attrs.get("alt") or "").strip()
             if len(alt) == 1 and alt.isalpha():
-                self._text(alt)
+                self._text(alt)  # a drop cap drawn as a picture of its letter
+            elif alt and any(tag in HEADINGS for tag, _ in self.stack):
+                self._text(alt)  # a heading drawn as a picture ("Chapter IV")
+            elif alt:
+                self.stack.append((tag, {"reason": Reason.FIGURE}))
+                self._text(alt)  # a picture's description: kept, not read
+                self.stack.pop()
             return
         if tag == "hr":
             return
         self.stack.append((tag, info))
+
+    def _open_note(self) -> dict | None:
+        return next((info for _, info in reversed(self.stack) if info.get("note")), None)
 
     def _looks_like_noteref(self, attrs: dict) -> bool:
         # <sup><a href="#fn1">1</a></sup> without epub:type
@@ -281,7 +310,7 @@ def _toc(epub: _Epub, opf_path: str, manifest: dict, spine_toc: str | None) -> l
     return entries
 
 
-def read_epub(path: Path, *, language: str = "en") -> Book:
+def read_epub(path: Path, *, language: str | None = None) -> Book:
     epub = _Epub(path)
     epub.check_drm()
     container = epub.xml("META-INF/container.xml")
@@ -297,14 +326,13 @@ def read_epub(path: Path, *, language: str = "en") -> Book:
         element = metadata.find(f"dc:{tag}", NS) if metadata is not None else None
         return _SPACE.sub(" ", element.text or "").strip() if element is not None else ""
 
-    book_language = meta("language") or language
-    rules = rules_for(book_language if book_language.lower().startswith("en") else language)
     book = Book(
         title=meta("title") or path.stem,
         author=meta("creator"),
-        language=book_language,
+        language=book_language(meta("language"), language),
         source_format="epub",
     )
+    rules = rules_for(book.language)
 
     manifest = {}
     manifest_element = opf.find("opf:manifest", NS)
@@ -319,24 +347,29 @@ def read_epub(path: Path, *, language: str = "en") -> Book:
     spine = opf.find("opf:spine", NS)
     if spine is None:
         raise IngestError("This EPUB has no reading order, so PageVoice can't read it.")
-    order = [
-        manifest[ref.get("idref")]["path"]
+    # Every spine document is read. Ones outside the reading order (linear="no": pop-up
+    # notes, answer keys) supply notes, and the rest of their text is kept as removals.
+    spine_parts = [
+        (manifest[ref.get("idref")]["path"], ref.get("linear", "yes") != "no")
         for ref in spine
-        if ref.get("idref") in manifest and ref.get("linear", "yes") != "no"
+        if ref.get("idref") in manifest
     ]
+    order = [part for part, linear in spine_parts if linear]
+    extra = [part for part, linear in spine_parts if not linear]
     toc = _toc(epub, opf_path, manifest, spine.get("toc"))
     starts: dict[tuple[str, str], str] = {(p, f): t for p, f, t in toc}
 
     # Parse every document first, so notes in another file (endnotes.xhtml) can be found.
     documents: dict[str, list[Block]] = {}
     notes: dict[tuple[str, str], list[Block]] = {}
-    for part in order:
+    for part in order + extra:
         parser = _Extractor(part)
         parser.feed(epub.read(part).decode("utf-8", errors="replace"))
         parser.close()
         documents[part] = parser.blocks
-        for block in parser.blocks:
-            if block.note_id:
+        for number, block in enumerate(parser.blocks):
+            if block.kind == "note":
+                block.note_id = block.note_id or f"#unnamed-{number}"
                 notes.setdefault((part, block.note_id), []).append(block)
 
     chapters: list[Chapter] = []
@@ -351,7 +384,7 @@ def read_epub(path: Path, *, language: str = "en") -> Book:
             if current is None or split_title:
                 current = Chapter(title=split_title or title or "")
                 chapters.append(current)
-            if block.note_id:
+            if block.kind == "note":
                 key = (part, block.note_id)
                 if key not in moved:  # cited later, or never: decided after the loop
                     pending.append((current, key, block))
@@ -370,6 +403,16 @@ def read_epub(path: Path, *, language: str = "en") -> Book:
     for chapter, key, block in pending:
         if key not in moved:
             chapter.notes.append(_paragraph(block, kind="note"))
+    # Text outside the reading order: kept, not read. Notes cited from it were moved.
+    outside: list[Paragraph] = []
+    for part in extra:
+        for block in documents[part]:
+            if block.kind == "note" and (part, block.note_id) in moved:
+                continue
+            paragraph = _paragraph(block)
+            for span in paragraph.spans:
+                span.reason = span.reason or Reason.NON_LINEAR
+            outside.append(paragraph)
 
     kept: list[Chapter] = []
     carry: list[Paragraph] = []  # removals from text-less sections, kept for review
@@ -383,6 +426,7 @@ def read_epub(path: Path, *, language: str = "en") -> Book:
         carry = []
         kept.append(chapter)
     book.chapters = kept or [Chapter(title=book.title, paragraphs=carry)]
+    book.chapters[-1].paragraphs += outside
     return book
 
 

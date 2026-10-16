@@ -138,6 +138,10 @@ def extract(path: Path) -> Extracted:
 
     pages: list[Page] = []
     with pdf:
+        # Encrypted with an empty password but copying forbidden: that's the publisher
+        # saying no. PageVoice never works around protection (SPEC §3).
+        if getattr(pdf.doc, "encryption", None) and not pdf.doc.is_extractable:
+            raise IngestError(ENCRYPTED_MESSAGE)
         meta = pdf.metadata or {}
         for index, raw in enumerate(pdf.pages, 1):
             page = Page(index, float(raw.width), float(raw.height))
@@ -209,7 +213,7 @@ def _meta_text(value) -> str:
     return str(value or "").strip()
 
 
-def read_pdf(path: Path, *, language: str = "en") -> Book:
+def read_pdf(path: Path, *, language: str | None = None) -> Book:
     from pagevoice.cleanup.pdf import build_book
 
     extracted = extract(path)

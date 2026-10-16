@@ -18,6 +18,12 @@ CAPTION = re.compile(r"^\s*(?:fig(?:ure)?\.?|table|plate|illustration)\s+[\dIVXL
 # Project Gutenberg plain text marks pictures as "[Illustration: caption]", sometimes
 # over several blank-line-separated blocks.
 ILLUSTRATION_START = re.compile(r"^\s*\[Illustrations?\b", re.I)
+# Splits a marker block into its opening, the text inside, and the closing bracket.
+ILLUSTRATION_PARTS = re.compile(r"^(\[Illustrations?:?\s*|)(.*?)(\]?)$", re.S | re.I)
+
+# Project Gutenberg plain-text notes: "[Footnote 1: text]" blocks, "[1]" markers in text.
+FOOTNOTE_BLOCK = re.compile(r"^\s*\[(?:Footnote|Note)\s*[\w*†‡]{0,4}\s*:\s*", re.I)
+FOOTNOTE_REF = re.compile(r"\[(?:\d{1,3}|[A-Z]|[*†‡])\]")
 
 CONTENTS = re.compile(r"^\s*(?:table of )?contents\.?\s*$", re.I)
 
