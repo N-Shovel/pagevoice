@@ -34,7 +34,8 @@ tests/                  unit tests; corpus/ (golden books); voice/sentences.tsv
 tools/                  dev scripts (licenses, benchmark, round-trip)
 benchmarks/history.csv  benchmark log (audio in benchmarks/out/, git-ignored)
 packaging/              PyInstaller spec, Inno Setup, AppImage, ffmpeg build (planned)
-docs/                   SPEC.md, DECISIONS.md
+docs/                   SPEC.md, DECISIONS.md, PROGRESS.md (where work stands),
+                        PAUSE_AND_RESUME.md (usage-limit pauses)
 ```
 
 ## Commands
@@ -66,3 +67,4 @@ After every `.py` edit, a hook runs `ruff format` and `ruff check` on that file 
 - **Audio:** you can't hear it. Never claim the voice "sounds good". Report round-trip numbers, and ask the owner to listen for naturalness and names.
 - **`main` is protected:** work on a branch and open a PR. CI (ruff, fast tests and license check, on Windows and Ubuntu 22.04) must pass. Never push to `main` directly or force-push.
 - **Commits and PRs:** no Claude or AI attribution of any kind.
+- **Usage limits and "continue":** keep [docs/PROGRESS.md](docs/PROGRESS.md) current after every finished step. When the usage note says a limit is at 90% or more, follow [docs/PAUSE_AND_RESUME.md](docs/PAUSE_AND_RESUME.md): commit, write it up, stop. When the owner says **continue**, start from docs/PROGRESS.md.

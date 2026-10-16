@@ -1,5 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "statusLine": {
+    "type": "command",
+    "command": "uv run --no-project --quiet python \"$(git rev-parse --show-toplevel)/.claude/hooks/usage_statusline.py\""
+  },
   "permissions": {
     "allow": [
       "Bash(uv run pytest)",
@@ -14,9 +18,12 @@
       "Bash(git diff)",
       "Bash(git diff *)",
       "Bash(git log *)",
+      "Bash(git push)",
+      "Bash(git push *)",
       "Bash(gh pr view *)",
       "Bash(gh pr checks *)",
       "Bash(gh pr list *)",
+      "Bash(gh pr merge *)",
       "Bash(gh run list *)",
       "Bash(gh run view *)",
       "Bash(gh run watch *)",
@@ -26,7 +33,10 @@
       "PowerShell(uv run ruff format *)",
       "PowerShell(git status)",
       "PowerShell(git diff)",
-      "PowerShell(git diff *)"
+      "PowerShell(git diff *)",
+      "PowerShell(git push)",
+      "PowerShell(git push *)",
+      "PowerShell(gh pr merge *)"
     ],
     "ask": [
       "Bash(pip install *)",
@@ -36,34 +46,62 @@
       "Bash(uv add *)",
       "Bash(uv pip install *)",
       "Bash(uv tool install *)",
-      "Bash(git push)",
-      "Bash(git push *)",
       "Bash(git tag *)",
       "Bash(gh release *)",
       "Bash(gh workflow run *)",
-      "Bash(gh pr merge *)",
       "Bash(gh api -X PUT *)",
       "Bash(gh api -X PATCH *)",
-      "Bash(gh api -X DELETE *)",
       "PowerShell(pip install *)",
       "PowerShell(python -m pip install *)",
       "PowerShell(py -m pip install *)",
       "PowerShell(uv add *)",
       "PowerShell(uv pip install *)",
-      "PowerShell(git push)",
-      "PowerShell(git push *)",
       "PowerShell(git tag *)",
       "PowerShell(gh release *)",
-      "PowerShell(gh workflow run *)",
-      "PowerShell(gh pr merge *)"
+      "PowerShell(gh workflow run *)"
     ],
     "deny": [
       "Edit(tests/corpus/**/expected/**)",
       "Edit(src/pagevoice/voice/model_manifest.json)",
-      "Edit(tests/voice/sentences.tsv)"
+      "Edit(tests/voice/sentences.tsv)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push --delete*)",
+      "Bash(git push *--force*)",
+      "Bash(git push * -f*)",
+      "Bash(git push *--delete*)",
+      "Bash(git push * -d*)",
+      "Bash(git push * :*)",
+      "Bash(git push * +*)",
+      "Bash(gh pr merge *--delete-branch*)",
+      "Bash(gh pr merge * -d*)",
+      "Bash(gh api -X DELETE *)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f*)",
+      "PowerShell(git push --delete*)",
+      "PowerShell(git push *--force*)",
+      "PowerShell(git push * -f*)",
+      "PowerShell(git push *--delete*)",
+      "PowerShell(git push * -d*)",
+      "PowerShell(git push * :*)",
+      "PowerShell(git push * +*)",
+      "PowerShell(gh pr merge *--delete-branch*)",
+      "PowerShell(gh pr merge * -d*)",
+      "PowerShell(gh api -X DELETE *)"
     ]
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/usage_guard.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
@@ -97,6 +135,16 @@
             "command": "uv run --project \"$CLAUDE_PROJECT_DIR\" --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff_after_edit.py\"",
             "timeout": 60,
             "statusMessage": "ruff format + check"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/usage_guard.py\"",
+            "timeout": 15
           }
         ]
       }
