@@ -3,8 +3,8 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-16
-- **Milestone:** M3, export: ready to merge (PR #7). M0–M2 are done except the owner items below.
-- **Branch:** m3-export
+- **Milestone:** M4, GUI (draft PR #8). M0–M3 are done except the owner items below.
+- **Branch:** m4-gui
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
@@ -45,21 +45,30 @@ Claude Code keeps this file current. It updates it after every finished step and
   - English normalizer, pronunciation lists, paragraph render cache, renderer, CLI `render`.
   - The spec-review findings are fixed (D33).
 
+- M3 (PR #7, merged by the owner):
+  - Bundled LGPL ffmpeg built in CI.
+  - M4B with chapters, cover and tags, or MP3 per chapter.
+  - CLI `export`.
+  - The spec-review fixes are in D34.
+
 ## In progress
-- **M3: PR #7** from `m3-export`, ready to merge. All checks pass: CI, benchmark, and the `ffmpeg` workflow on Ubuntu 22.04 and Windows.
-  - What's in it:
-    - Bundled LGPL ffmpeg built in CI.
-    - The M4B and MP3 exporters.
-    - CLI `pagevoice export BOOK --out book.m4b [--format mp3] [--keep-cache]`.
-    - The spec-review fixes (D34).
-  - The real-encode tests passed on both OSes with the built ffmpeg. They check the tags, the audiobook media type, the cover, mono audio, duration, QuickTime and Nero chapters with start times, and the MP3 ID3 tags and cover.
-- **Fast tests:** 214 passed, 3 skipped.
+- **M4: draft PR #8** from `m4-gui`. CI passed on both OSes, and the 15 GUI tests ran headless on Ubuntu too.
+  - Engine (no Qt, tested):
+    - `edit.py`: restore, rename, merge, split.
+    - `project.py`: the saved review per book, and the per-book pronunciation list path.
+    - `speak()` for previews.
+  - GUI (`pagevoice-gui`, the `gui` extra with PySide6-Essentials):
+    - Open: PDFs go to review first; EPUB and TXT skip it.
+    - Review: dimmed removals with reasons, click to restore, chapter rename, merge and split, flagged pages.
+    - Pronunciations: the book's list and the list for all books, with preview and TSV import/export.
+    - Render: progress, time left, pause, resume and stop.
+    - Export, and the first-run voice download.
+  - All slow work runs through `pagevoice_gui/tasks.py` workers.
+  - The spec-reviewer was started for M4. Its findings are next.
+- **Fast tests:** 239 passed, 3 skipped.
 
 ## Next step
-1. After PR #7 merges: create `m4-gui` from `main` and start M4 (SPEC §12: import → review with dimmed removals, restore and chapter edits → render with progress, pause and resume → export, without blocking the UI).
-   - Adding PySide6 goes through the `add-dependency` skill, as the `gui` extra.
-   - `ensure_file` hashes the model, so it must not run on the UI thread.
-   - Export runs in a worker. Clear the cache only when the user is done editing (D34).
+1. Fix the M4 spec-reviewer findings (re-run it if its results were lost), then mark PR #8 ready.
 2. Don't start M5.
 
 ## Waiting on the owner
@@ -89,6 +98,8 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Installer size:** the G2P stack (spaCy + English model + espeak-ng) is well over the skill's ~20 MB line for runtime packages. SPEC O1 expected this, but it needs the owner's OK.
 
 ## Notes for next time
+- **GUI screenshots:** run with `QT_QPA_PLATFORM=offscreen` and `QT_QPA_FONTDIR=C:/Windows/Fonts` (without fonts, the offscreen platform draws boxes), then save `window.grab()`.
+- **Cleanup, seen in review:** in trap-lantern chapter I, the subtitle joins the first line ("The Tower Stood on a ledge…"). It's M1 cleanup, so check it against the golden pages.
 - **Status line (README step 7):** no state file appeared in this client (the VS Code chat panel), so the 90% pause doesn't fire here. Use `claude` in VS Code's terminal for long runs. PROGRESS.md and "continue" still work.
 - **Dependencies:** `uv add` is on the ask list. To avoid prompts while the owner is busy, dependencies were written to pyproject.toml and installed with `uv sync`, after the same license check.
 - **For M2:** misaki also reads numbers itself (num2words). M2's `normalize/en.py` must run first, so misaki only ever sees normalized text, with a test that numbers aren't read twice. The render cache should also record the text the G2P couldn't pronounce, per paragraph.
