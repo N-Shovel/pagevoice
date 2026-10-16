@@ -1,0 +1,5 @@
+# Binary test files: never convert line endings.
+*.pdf binary
+*.epub binary
+*.png binary
+*.jpg binary
