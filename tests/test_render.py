@@ -165,7 +165,7 @@ def test_pronunciation_entries_change_the_key(voice, cache):
     plain = Renderer(book("Hermione smiled."), voice, cache, book_id="b").items[1]
     entries = [Entry("Hermione", "her-MY-oh-nee")]
     named = Renderer(book("Hermione smiled."), voice, cache, book_id="b", pronunciations=entries)
-    assert named.items[1].spoken == "her-MY-oh-nee smiled."
+    assert named.items[1].spoken == "her-my-oh-nee smiled."
     assert named.items[1].key != plain.key
 
 

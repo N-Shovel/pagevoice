@@ -102,12 +102,12 @@ def to_16k(path: Path):
     ).astype(np.float32)
 
 
-def render(sentences: list[Sentence], args: argparse.Namespace, out_dir: Path) -> list[Path]:
-    """Render through the engine: normalizer, pronunciation lists and the paragraph cache,
-    so reruns are cheap and the check sees exactly what a book would get."""
+def render(sentences: list[Sentence], args: argparse.Namespace, out_dir: Path) -> list[Path | None]:
+    """Render through the engine: normalizer and the paragraph cache, so reruns are cheap
+    and the check sees exactly what a book would get. No pronunciation list: results must
+    not depend on whose machine ran the check. None for a sentence that failed to render."""
     from pagevoice.audio import write_wav
     from pagevoice.document import Book, Chapter, Paragraph
-    from pagevoice.pronounce.store import entries_for
     from pagevoice.render.cache import RenderCache
     from pagevoice.render.renderer import Renderer
     from pagevoice.voice.engine import VoiceSetup
@@ -122,13 +122,16 @@ def render(sentences: list[Sentence], args: argparse.Namespace, out_dir: Path) -
         title="sentences",
         chapters=[Chapter("sentences", [Paragraph.plain(s.text) for s in sentences])],
     )
-    renderer = Renderer(book, voice, RenderCache(), book_id="roundtrip-sentences",
-                        pronunciations=entries_for())  # fmt: skip
+    renderer = Renderer(book, voice, RenderCache(), book_id="roundtrip-sentences")
     renderer.run()
-    paths = []
+    paths: list[Path | None] = []
     for index, (sentence, item) in enumerate(zip(sentences, renderer.items, strict=True), 1):
+        audio = renderer.cache.get(item.key)
+        if audio is None:
+            paths.append(None)
+            continue
         path = out_dir / "audio" / f"{index:02d}-{sentence.id}.wav"
-        write_wav(path, renderer.cache.get(item.key), SAMPLE_RATE)
+        write_wav(path, audio, SAMPLE_RATE)
         paths.append(path)
     return paths
 
@@ -152,44 +155,54 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Transcribing with faster-whisper {args.whisper}...", flush=True)
     whisper = WhisperModel(args.whisper, device="cpu", compute_type="int8")
-    rows = []
+    rows = []  # (sentence, transcript, best, against spoken, against printed)
+    failed = []
     for sentence, path in zip(sentences, paths, strict=True):
-        segments, _ = whisper.transcribe(to_16k(path), language="en", beam_size=5)
-        transcript = " ".join(s.text.strip() for s in segments)
+        if path is None:
+            failed.append(sentence.id)
+            transcript = ""  # counted as every word missing
+        else:
+            segments, _ = whisper.transcribe(to_16k(path), language="en", beam_size=5)
+            transcript = " ".join(s.text.strip() for s in segments)
         # Whisper often writes the printed form ("Mr.", "IV") for a correct reading, so
-        # score against both the spoken and the printed reference and keep the better one.
+        # score against both the spoken and the printed reference; the better one counts.
         heard = words(transcript)
-        result = min(
-            diff(words(sentence.spoken), heard),
-            diff(words(sentence.text), heard),
-            key=lambda d: d.wer,
-        )
-        rows.append((sentence, transcript, result))
+        spoken = diff(words(sentence.spoken), heard)
+        printed = diff(words(sentence.text), heard)
+        best = min(spoken, printed, key=lambda d: d.wer)
+        rows.append((sentence, transcript, best, spoken, printed))
 
     with (out_dir / "report.csv").open("w", encoding="utf-8", newline="") as fh:
         writer = csv.writer(fh, lineterminator="\n")
-        writer.writerow(["id", "category", "wer", "missing", "inserted", "subs", "ref", "heard"])
-        for s, heard, d in rows:
+        writer.writerow(
+            ["id", "category", "wer", "wer_spoken", "wer_printed", "missing", "inserted"]
+            + ["subs", "ref", "heard"]
+        )
+        for s, heard, d, sp, pr in rows:
             subs = "; ".join(f"{a}->{b}" for a, b in d.substituted)
             writer.writerow(
-                [s.id, s.category, f"{d.wer:.3f}", " ".join(d.missing), " ".join(d.inserted)]
-                + [subs, s.spoken, heard]
+                [s.id, s.category, f"{d.wer:.3f}", f"{sp.wer:.3f}", f"{pr.wer:.3f}"]
+                + [" ".join(d.missing), " ".join(d.inserted), subs, s.spoken, heard]
             )
 
-    total_ref = sum(len(words(s.spoken)) for s, _, _ in rows)
-    total_err = sum(d.wer * len(words(s.spoken)) for s, _, d in rows)
+    def overall(column: int) -> float:
+        total_ref = sum(len(words(r[0].spoken)) for r in rows)
+        return sum(r[column].wer * len(words(r[0].spoken)) for r in rows) / total_ref
+
     lines = [
         f"Round-trip {name}: g2p={args.g2p} variant={args.variant} voice={args.voice}",
-        f"Overall WER {total_err / total_ref:.1%} over {len(rows)} sentences.",
-        "",
-        "Failures (skipped text or misread words, WER over 5%):",
+        f"Overall WER {overall(2):.1%} over {len(rows)} sentences, the better of: "
+        f"against the spoken form {overall(3):.1%}, against the printed text {overall(4):.1%}.",
     ]
-    for s, heard, d in rows:
+    if failed:
+        lines.append(f"Failed to render (counted as all words missing): {', '.join(failed)}")
+    lines += ["", "Failures (skipped text or misread words, WER over 5%):"]
+    for s, heard, d, _, _ in rows:
         if s.category in LISTEN_CATEGORIES or d.wer <= 0.05:
             continue
         lines += [f"  {s.id} WER {d.wer:.0%}", f"    ref:   {s.spoken}", f"    heard: {heard}"]
     lines += ["", "For the owner to listen to (names and heteronyms):"]
-    for s, heard, d in rows:
+    for s, heard, d, _, _ in rows:
         if s.category in LISTEN_CATEGORIES:
             lines.append(f"  {s.id} WER {d.wer:.0%}  heard: {heard}")
     lines += ["", "A human still needs to listen for naturalness and how names come out."]

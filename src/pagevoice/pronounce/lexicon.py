@@ -51,7 +51,10 @@ class Entry:
         if self.phonemes:
             # misaki's inline override: [word](/phonemes/)
             return f"[{self.word}](/{self.phonemes.strip('/')}/)"
-        return self.sounds_like
+        # Capitals in a respelling ("DAR-see") mark stress for people, but the G2P would
+        # spell a capital syllable as letters ("D A R") and ignores them for stress anyway.
+        # Stress that matters goes in the phonemes column.
+        return self.sounds_like.lower()
 
     def as_dict(self) -> dict:
         return asdict(self)
