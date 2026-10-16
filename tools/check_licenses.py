@@ -30,7 +30,10 @@ ALLOW = re.compile(
 )
 # Packages whose metadata is missing or misleading, checked by hand. Every entry here
 # must also have a row in the dependency log in docs/DECISIONS.md.
-REVIEWED: dict[str, str] = {}
+REVIEWED: dict[str, str] = {
+    # PyPI metadata is empty. The repo LICENSE is MIT; it bundles espeak-ng (GPL-3.0+).
+    "espeakng-loader": "MIT (bundles espeak-ng, GPL-3.0-or-later)",
+}
 # This project itself (GPL-3.0).
 SELF = {"pagevoice"}
 

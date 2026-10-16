@@ -135,8 +135,10 @@ At the end of each milestone, run the `spec-reviewer` agent against this file an
 | O1 | Which G2P (text-to-phonemes) for Kokoro? | misaki (Kokoro's own, Apache-2.0) uses spaCy's grammar tagging to choose between heteronyms ("polish/Polish", "read/read", "lead/lead"); espeak-ng via phonemizer (GPL-3.0, fine for us) mostly can't. spaCy plus its English model is what the extra installer size buys. Decide in M0 with the six `het-*` rows of `tests/voice/sentences.tsv`. |
 | O4 | Default Kokoro voice and speed | Pick after the A/B listening in M0. |
 
-Resolved, 2026-10-09:
+Resolved, 2026-10-09 and 2026-10-16:
 
 - **O2, license variant:** GPL-3.0-or-later (D1).
 - **O3, pronunciation file format:** TSV, BOM accepted (D15).
 - **O5, disk locations:** platformdirs, with a capped render cache (D26).
+- **O1, G2P:** misaki with espeak-ng fallback (D29, provisional until the owner listens).
+- **O4, default voice and speed:** af_heart at 1.0 (D31, provisional until the owner listens).

@@ -1,0 +1,7 @@
+date,git_sha,machine,os,cpu,provider,variant,threads,sentences,audio_seconds,wall_seconds,x_realtime,load_seconds,peak_rss_mb
+2026-10-16,b5c1d6d,laptop-tlc3d2rv,Windows 11,AMD Ryzen 5 5600H with Radeon Graphics,cpu,fp32,default,59,243.075,92.58,2.626,1.349,1073.3
+2026-10-16,b5c1d6d,laptop-tlc3d2rv,Windows 11,AMD Ryzen 5 5600H with Radeon Graphics,cpu,int8,default,59,243.125,103.383,2.352,1.271,1036.7
+2026-10-16,d2cb4f7,gha-linux,Linux 6.8.0-1064-azure,AMD EPYC 7763 64-Core Processor,cpu,fp32,default,59,243.075,105.683,2.3,0.949,1137.5
+2026-10-16,d2cb4f7,gha-linux,Linux 6.8.0-1064-azure,AMD EPYC 7763 64-Core Processor,cpu,int8,default,59,243.125,86.623,2.807,0.677,1071.2
+2026-10-16,d2cb4f7,gha-windows,Windows 2025Server,AMD EPYC 9V74 80-Core Processor,cpu,fp32,default,59,243.075,102.544,2.37,1.073,1080.2
+2026-10-16,d2cb4f7,gha-windows,Windows 2025Server,AMD EPYC 9V74 80-Core Processor,cpu,int8,default,59,242.9,86.417,2.811,1.212,1043.9
