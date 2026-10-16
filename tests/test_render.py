@@ -13,7 +13,7 @@ import pytest
 from pagevoice.document import Book, Chapter, Paragraph
 from pagevoice.pronounce.lexicon import Entry
 from pagevoice.render.cache import STALE_TMP_SECONDS, KeyParts, RenderCache
-from pagevoice.render.renderer import Renderer, RenderSettings
+from pagevoice.render.renderer import Renderer, RenderSettings, speak
 from pagevoice.voice.engine import VoiceSetup
 from pagevoice.voice.manifest import PROPOSED, load_manifest
 
@@ -261,3 +261,14 @@ def test_real_voice_renders_and_resumes(tmp_path):
     audio = Renderer(b, real, cache, book_id="e2e").chapter_audio(0)
     assert len(audio) / 24000 > 3
     assert Renderer(b, real, cache, book_id="e2e").run().cached == 3
+
+
+def test_speak_reads_like_the_book(voice, cache):
+    seen = []
+    voice.phonemes = lambda text: seen.append(text) or text
+    entries = [Entry("Hermione", "her-MY-oh-nee")]
+    audio = speak("Hermione was born in 1979.", voice, pronunciations=entries)
+    assert len(audio) > 0
+    r = Renderer(book("Hermione was born in 1979."), voice, cache, book_id="b",
+                 pronunciations=entries)  # fmt: skip
+    assert seen == [r.items[1].spoken] == ["her-my-oh-nee was born in nineteen seventy-nine."]

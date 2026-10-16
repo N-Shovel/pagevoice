@@ -82,7 +82,11 @@ def _render(args):
         RenderCache(),
         book_id=book_id,
         settings=RenderSettings(speed=args.speed),
-        pronunciations=entries_for(Path(args.pronunciations) if args.pronunciations else None),
+        pronunciations=entries_for(
+            Path(args.pronunciations)
+            if args.pronunciations
+            else project.pronunciations_path(book_id)
+        ),
     )
 
     def progress(p) -> None:

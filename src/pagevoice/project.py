@@ -100,6 +100,11 @@ def load(book_id: str) -> Book | None:
         return None
 
 
+def pronunciations_path(book_id: str) -> Path:
+    """The book's own pronunciation list (TSV), next to its saved review (SPEC §5)."""
+    return projects_dir() / f"{book_id}.pronunciations.tsv"
+
+
 def forget(book_id: str) -> None:
     """Drop the saved review, e.g. to clean the book again from scratch."""
     (projects_dir() / f"{book_id}.json").unlink(missing_ok=True)
