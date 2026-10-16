@@ -20,3 +20,13 @@ def g2p_for(language: str, backend: str | None = None) -> G2P:
 
         return EnglishG2P(backend or DEFAULT_BACKEND, british=code == "en-gb")
     raise ValueError(f"PageVoice v1 reads English only; no G2P for language {language!r}")
+
+
+def g2p_version(language: str, backend: str | None = None) -> str:
+    """The G2P's name and package versions; part of the render cache key."""
+    backend = backend or DEFAULT_BACKEND
+    if normalize_language(language).split("-")[0] == "en":
+        from pagevoice.voice.g2p_en import version
+
+        return f"{backend} {version(backend)}"
+    raise ValueError(f"PageVoice v1 reads English only; no G2P for language {language!r}")

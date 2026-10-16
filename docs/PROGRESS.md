@@ -3,9 +3,9 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-16
-- **Milestone:** M1, ingest and cleanup (M0 done except the owner items below)
-- **Branch:** m1-ingest
-- **State:** working. The other states are: not started, paused (usage), waiting for owner, done.
+- **Milestone:** M2, speech (M0 and M1 done except the owner items below)
+- **Branch:** m2-speech
+- **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
 ## Done
@@ -28,30 +28,32 @@ Claude Code keeps this file current. It updates it after every finished step and
     - British English is detected from any spelling of the code.
     - Benchmark comparisons match on the CPU too.
 
-## In progress
-- M1 on `m1-ingest`:
+- M1 (PRs #4 and #5, merged by the owner):
   - Readers: TXT, EPUB (parsed by hand) and PDF (pdfplumber).
-  - Removals for:
+  - Removals, all restorable:
     - headers, footers and page numbers
     - footnotes (moved to the chapter's end) and their markers
     - captions, tables, contents and boilerplate
-    - line-break hyphens
+    - figures, non-linear EPUB text and line-break hyphens
   - Repairs: drop caps, small caps, ligatures and soft hyphens.
-  - Scanned and multi-column pages are flagged.
-  - Seven trap PDFs and five public books are in the corpus. 23 candidate pages match PageVoice's output.
-  - Spec-reviewer: 3 violations fixed, and its code concerns fixed:
-    - EPUB notes with an inner id
-    - non-linear EPUB documents
-    - SVG, MathML and image alt text
-    - PDF note markers and hyphens
-    - notes on multi-column pages
-    - language handling, copy-protected PDFs, same-page bookmarks
-    - Gutenberg footnotes, unclosed markers and TXT locations
-  - PR #4: merge when CI passes.
-  - M1 isn't fully "done" (golden corpus passes) until the owner approves golden pages.
+  - Scanned and multi-column pages are flagged, and non-English books are refused plainly.
+  - Corpus: 7 trap PDFs and 5 public books. 23 candidate pages match.
+  - The spec-reviewer's findings are fixed.
+  - The resilient corpus fetch missed the merge; it's on `m2-speech`.
+
+## In progress
+- **M2 on `m2-speech`:** the spec-review findings are all fixed (2 violations, 14 concerns). Details are in D33. Fast tests: 197 passed, 1 skipped. Slow tests: 4 passed.
+  - Respellings are now lowercased before the G2P: misaki spelled capital syllables as letters ("DAR-see" became "D A R see") and ignores capitals for stress anyway.
+  - The M3 work-in-progress (1c56c79) is reverted on this branch so it stays out of the M2 PR.
+- **M2 PR:** opened from `m2-speech`; merge when CI passes.
 
 ## Next step
-- Merge M1. Then M2 (speech): `normalize/en.py` driven by `tests/voice/sentences.tsv`, pronunciation lists, and the paragraph render cache with resume.
+1. When the M2 PR is merged: create `m3-export` from `main` and `git cherry-pick 1c56c79`. That brings back:
+   - `packaging/ffmpeg/build.sh` (LGPL-only ffmpeg 8.1.3 + LAME 3.100, checksums pinned)
+   - `.github/workflows/ffmpeg.yml`
+   - `src/pagevoice/export/` (`ffmpeg.py` finds the bundled ffmpeg, never PATH; `audiobook.py` writes the M4B and the MP3s)
+2. M3: test the exporters (`tests/test_export.py`, with mutagen as a dev dependency to read M4B chapters and tags), run the ffmpeg workflow, add the CLI `export` command, run the spec-reviewer, open the PR.
+3. Then M4 (GUI). Don't start M5.
 
 ## Waiting on the owner
 - **Model manifest:**
@@ -60,6 +62,10 @@ Claude Code keeps this file current. It updates it after every finished step and
   - Move the file to `model_manifest.json`.
   - Until then, dev tools download from the pinned source URLs.
 - **Blind A/B listening:** the fp32/int8 pairs are in `benchmarks/out/2026-10-16-ab/` (only on the laptop; that folder is git-ignored). Listen, note a preference per pair, and only then open `key.json`. That settles D30.
+- **Listen to a rendered chapter:**
+  - Run `uv run pagevoice render tests/corpus/public/trap-lantern/book.pdf --out out --chapters 3 --dev-proposed-manifest`.
+  - Check the pauses (D33) and the reading of numbers and abbreviations.
+  - "'Tis" comes out as "tease"; it's a candidate for the global pronunciation list.
 - **Listen to the voices** (`benchmarks/out/roundtrip-2026-10-16-*/audio/`) for D31, and to the names and heteronyms for D29.
 - **espeakng-loader in `REVIEWED`** in `tools/check_licenses.py` (the skill asks for the owner's OK).
 - **Golden pages:**
@@ -69,6 +75,9 @@ Claude Code keeps this file current. It updates it after every finished step and
     - Trap PDFs: the text they were typeset from.
     - Real books: PageVoice's output, checked against page images by Claude.
     - The OCR books keep the text layer's spelling errors.
+- **Notes in audio:** should notes at a chapter's end get a spoken "Notes" heading or a longer pause? (M2 review, item 16)
+- **Stress in respellings:** capitals in a "sounds like" respelling no longer mark stress (misaki never used them). Is that OK, or should the GUI preview steer people to the phonemes column for stress? (D33)
+- **Years with context (D33):** "had 1500 soldiers" is now a count, and "1914 changed everything" or "It was 1945." are years. Listen for misreadings in real books.
 - **Copy-protected PDFs (D32, provisional):** a PDF that forbids copying text is refused. Say if that's too strict.
 - **Installer size:** the G2P stack (spaCy + English model + espeak-ng) is well over the skill's ~20 MB line for runtime packages. SPEC O1 expected this, but it needs the owner's OK.
 
