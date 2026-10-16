@@ -5,7 +5,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Last updated:** 2026-10-16
 - **Milestone:** M2, speech (M0 and M1 done except the owner items below)
 - **Branch:** m2-speech
-- **State:** working. The other states are: not started, paused (usage), waiting for owner, done.
+- **State:** paused (usage, about 93%). The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
 
 ## Done
@@ -42,16 +42,37 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The resilient corpus fetch missed the merge; it's on `m2-speech`.
 
 ## In progress
-- M2 on `m2-speech` (commit ef71412):
-  - `normalize/en.py`: all 59 rows of `tests/voice/sentences.tsv` match.
-  - Round-trip WER is down from 5.3% to 3.7%. Most of what's left is Whisper writing digits.
-  - Pronunciation lists: TSV, global plus per-book.
-  - FLAC paragraph cache: renders and resumes (a rerun came straight from the cache in 2 s).
-  - CLI: `pagevoice info`, `pagevoice download` and `pagevoice render`.
-  - Next: the spec-reviewer (running), then the PR.
+- **M2 on `m2-speech`:** finished (commit ef71412) and spec-reviewed, but the review findings aren't fixed yet. No PR opened yet, on purpose: fix the findings first, because the owner merges as soon as CI passes.
+- **M3 started on the same branch:** commit 1c56c79, `wip:`, untested.
+  - Files:
+    - `packaging/ffmpeg/build.sh` (LGPL-only ffmpeg 8.1.3 + LAME 3.100, checksums pinned)
+    - `.github/workflows/ffmpeg.yml`
+    - `src/pagevoice/export/` (`ffmpeg.py` finds the bundled ffmpeg, never PATH; `audiobook.py` writes the M4B and the MP3s)
+  - These should move to their own `m3-export` branch after M2 merges (cherry-pick 1c56c79).
+- **Fast tests:** 176 passed, 1 skipped.
 
 ## Next step
-- After M2: M3 (export). CI-built LGPL ffmpeg; M4B with chapters, cover and metadata; MP3 per chapter.
+1. **Fix the M2 spec-review findings on `m2-speech`.** Violations:
+   - Pass the book's language to the G2P: in `Renderer`, set `voice.language` from `book.language`. Test that an en-GB book reaches the G2P as British.
+   - Per-book entries must win over global ones even with different case settings: sort book entries first on equal length, or drop global entries whose word matches case-insensitively. Add a test.
+2. **Then the M2 concerns:**
+   - Report text the G2P drops (`Result.warnings`).
+   - Clip audio before writing PCM_16 FLAC.
+   - Possessives and quotes in whole-word matching ("Hermione's").
+   - A lone "I" after lowercase keywords ("the letter I sent").
+   - Placeholders hide name context from "Dr."/"Henry VIII".
+   - Size check in `VoiceSetup._paths`.
+   - G2P versions in the cache key; drop `note` from the key.
+   - Merge the book index, don't overwrite it.
+   - uuid temp names, and clean stale `*.tmp`.
+   - "US" should be spelled out.
+   - Only read 4-digit numbers as years with context; leave dates like 12/25/1990 alone.
+   - The pause test asserts nothing.
+   - CLI: catch `LookupError` per chapter.
+   - `roundtrip.py`: no personal pronunciation list; handle failed rows; report both WERs.
+   - Ask the owner whether notes get a spoken "Notes" heading.
+   - A slow test of respellings through misaki.
+3. Open the M2 PR, merge when CI passes. Then M3: test the exporters (`tests/test_export.py`, with mutagen as a dev dependency to read M4B chapters and tags), run the ffmpeg workflow, add the CLI `export` command, run the spec-reviewer. Then M4 (GUI). Don't start M5.
 
 ## Waiting on the owner
 - **Model manifest:**
@@ -73,6 +94,7 @@ Claude Code keeps this file current. It updates it after every finished step and
     - Trap PDFs: the text they were typeset from.
     - Real books: PageVoice's output, checked against page images by Claude.
     - The OCR books keep the text layer's spelling errors.
+- **Notes in audio:** should notes at a chapter's end get a spoken "Notes" heading or a longer pause? (M2 review, item 16)
 - **Copy-protected PDFs (D32, provisional):** a PDF that forbids copying text is refused. Say if that's too strict.
 - **Installer size:** the G2P stack (spaCy + English model + espeak-ng) is well over the skill's ~20 MB line for runtime packages. SPEC O1 expected this, but it needs the owner's OK.
 
