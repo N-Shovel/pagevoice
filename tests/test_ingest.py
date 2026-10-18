@@ -164,7 +164,7 @@ NOTES = """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idp
 </ol></section></body></html>"""
 
 
-def make_epub(path: Path, *, encryption: str | None = None) -> Path:
+def make_epub(path: Path, *, encryption: str | None = None, one: str | None = None) -> Path:
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("mimetype", "application/epub+zip")
         z.writestr("META-INF/container.xml", CONTAINER)
@@ -172,7 +172,7 @@ def make_epub(path: Path, *, encryption: str | None = None) -> Path:
             z.writestr("META-INF/encryption.xml", encryption)
         z.writestr("OEBPS/content.opf", OPF)
         z.writestr("OEBPS/nav.xhtml", NAV)
-        z.writestr("OEBPS/text/one.xhtml", ONE)
+        z.writestr("OEBPS/text/one.xhtml", one or ONE)
         z.writestr("OEBPS/text/two.xhtml", TWO)
         z.writestr("OEBPS/text/notes.xhtml", NOTES)
         z.writestr("OEBPS/cover.jpg", b"\xff\xd8fakejpeg")
@@ -518,3 +518,32 @@ def test_pdf_pages_are_closed_as_they_are_read(monkeypatch):
     monkeypatch.setattr(Page, "extract_words", words)
     read_book(TRAPS / "trap-lantern" / "book.pdf")
     assert len(seen) > 2 and seen == list(range(len(seen)))
+
+
+ONE_MARKERS = """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>One</title></head><body>
+<h1>Chapter One</h1>
+<p>The war ended in spring.<a href="#fn3"><sup>3</sup></a> Nobody believed it.</p>
+<p>See <a href="#ch2"><sup>the</sup> next chapter</a> and chapter <a href="#ch2">2</a>.</p>
+<p><svg xmlns="http://www.w3.org/2000/svg"><title>A map of the coast</title></svg>After.</p>
+<aside id="fn3"><p>3 The treaty came later.</p></aside>
+</body></html>"""
+
+
+def test_epub_link_around_superscript_is_a_note_marker(tmp_path):
+    """Review finding 6: <a href="#fn"><sup>1</sup></a> (Calibre, many publishers)."""
+    book = read_book(make_epub(tmp_path / "m.epub", one=ONE_MARKERS))
+    first = book.chapters[0]
+    texts = [p.text for p in first.paragraphs]
+    assert "The war ended in spring. Nobody believed it." in texts
+    markers = [s for s in all_spans(book) if s.reason == Reason.FOOTNOTE_MARKER]
+    assert "3" in [s.text for s in markers]  # kept as a restorable removal
+    # Ordinary links stay read: longer text, or no superscript.
+    assert "See the next chapter and chapter 2." in texts
+
+
+def test_epub_svg_title_is_a_figure_removal(tmp_path):
+    """Rule 2: an SVG's <title> (its description) is kept as a removal, not dropped."""
+    book = read_book(make_epub(tmp_path / "s.epub", one=ONE_MARKERS))
+    figures = [s.text for s in all_spans(book) if s.reason == Reason.FIGURE]
+    assert "A map of the coast" in figures
+    assert "One" not in [s.text.strip() for s in all_spans(book)]  # <head><title> isn't text

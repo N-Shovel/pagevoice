@@ -38,7 +38,7 @@ BLOCK = {
     "footer", "table", "figure", "ol", "ul", "dl", "body", "nav", "hr",
 }  # fmt: skip
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
-SKIP = {"head", "script", "style", "title"}  # never book text
+SKIP = {"head", "script", "style"}  # never book text (the page <title> is in <head>)
 FIGURES = {"svg", "math"}  # their text is kept, as FIGURE removals
 NOTE_TYPES = ("footnote", "endnote", "rearnote", "note")  # whole words: not "endnotes"
 DOC_NOTE_ROLES = {"doc-footnote", "doc-endnote"}
@@ -46,6 +46,7 @@ DOC_NOTE_ROLES = {"doc-footnote", "doc-endnote"}
 BOILERPLATE_IDS = {"pg-header", "pg-footer", "pg-machine-header", "pg-start-separator"}
 BOILERPLATE_TYPES = ("imprint", "colophon", "copyright-page")
 _SPACE = re.compile(r"\s+")
+_MARKER = re.compile(r"[0-9a-zA-Z*†‡§¶#]+")  # what a note reference's text looks like
 _LINK = -1.0  # temporary marker on spans inside internal links (cleared on flush)
 
 
@@ -171,6 +172,15 @@ class _Extractor(HTMLParser):
             info["noteref"] = True
         elif tag == "a" and attrs.get("href") and "://" not in attrs["href"]:
             info["link"] = True
+            if "#" in attrs["href"] and not in_note:
+                # <a href="#fn1"><sup>1</sup></a>: a note reference written the other way
+                # round. Decided at </a>, once its text is known.
+                info.update(maybe_ref=attrs["href"], first_span=len(self.spans))
+        if tag == "sup":
+            for _, outer in reversed(self.stack):
+                if outer.get("maybe_ref"):
+                    outer["has_sup"] = True
+                    break
         if tag in BLOCK:
             self._flush()
         if tag == "img":
@@ -209,8 +219,23 @@ class _Extractor(HTMLParser):
                 for _, info in self.stack[index:]:
                     if info.get("noteref"):
                         self.noteref -= 1
+                    if info.get("maybe_ref") and info.get("has_sup"):
+                        self._late_noteref(info)
                 del self.stack[index:]
                 break
+
+    def _late_noteref(self, info: dict) -> None:
+        """An internal link that holds only a superscript marker ("1", "*", "†") is a
+        note reference: its text becomes a footnote_marker removal, like <sup><a>."""
+        spans = self.spans[info["first_span"] :]
+        text = "".join(s.text for s in spans).strip()
+        if not text or len(text) > 4 or not _MARKER.fullmatch(text):
+            return
+        for span in spans:
+            if span.reason is None:
+                span.reason = Reason.FOOTNOTE_MARKER
+            span.location.top = None
+        self.refs.append(info["maybe_ref"])
 
     def handle_data(self, data: str) -> None:
         if not self.skip:
