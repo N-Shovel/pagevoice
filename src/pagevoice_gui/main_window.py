@@ -57,12 +57,27 @@ class OpenPage(QWidget):
             ),
             wordWrap=True,
         )
-        self.button = QPushButton(self.tr("Open a book…"), clicked=open_clicked)
+        self.button = QPushButton(self.tr("Open a book…"), clicked=lambda: open_clicked())
         self.button.setMinimumHeight(40)
+        title.setAlignment(Qt.AlignHCenter)
+        self.status.setAlignment(Qt.AlignHCenter)
+        # A centred column of fixed width: a word-wrapped label needs a width to wrap to,
+        # or Qt squeezes it and the lines overlap.
+        column = QWidget()
+        column.setFixedWidth(520)
+        inner = QVBoxLayout(column)
+        inner.addWidget(title)
+        inner.addWidget(self.status)
+        inner.addWidget(self.button, alignment=Qt.AlignHCenter)
+        # Centred with stretches, not alignment flags: an aligned item loses Qt's
+        # height-for-width, and the wrapped text gets squeezed again.
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(column)
+        row.addStretch()
         layout = QVBoxLayout(self)
         layout.addStretch()
-        for widget in (title, self.status, self.button):
-            layout.addWidget(widget, alignment=Qt.AlignHCenter)
+        layout.addLayout(row)
         layout.addStretch()
 
 

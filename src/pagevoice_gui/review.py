@@ -120,7 +120,8 @@ class ReviewPage(QWidget):
         splitter.setStretchFactor(1, 3)
 
         clean_again = QPushButton(self.tr("Clean again from scratch…"), clicked=self._clean_again)
-        go_on = QPushButton(self.tr("Continue to voice and export"), clicked=self.continue_clicked)
+        go_on = QPushButton(self.tr("Continue to voice and export"))
+        go_on.clicked.connect(lambda: self.continue_clicked.emit())  # a signal isn't a slot
         go_on.setDefault(True)
         bottom = QHBoxLayout()
         bottom.addWidget(clean_again)
