@@ -162,6 +162,7 @@ class PronunciationDialog(QDialog):
         self.setWindowTitle(self.tr("Pronunciations"))
         self.resize(820, 480)
         self.paths: list[tuple[Path, EntryTable]] = []
+        self.unreadable: set[Path] = set()  # never saved over: that would wipe the list
         tabs = QTabWidget()
         self.global_table = self._table(global_path, preview, lambda: [])
         if book_path is not None:
@@ -187,10 +188,15 @@ class PronunciationDialog(QDialog):
     def _table(self, path: Path, preview: Preview, others) -> EntryTable:
         try:
             entries = load(path) if path.exists() else []
-        except LexiconError as exc:
-            QMessageBox.warning(self, self.tr("Pronunciations"), f"{path.name}: {exc}")
+        except (LexiconError, OSError) as exc:
+            self.unreadable.add(path)
+            QMessageBox.warning(self, self.tr("Pronunciations"), self.tr(
+                "%1 couldn't be read: %2\nIt won't be changed. Fix the file, or move it "
+                "away to start a new list."
+            ).replace("%1", path.name).replace("%2", str(exc)))  # fmt: skip
             entries = []
         table = EntryTable(entries, preview, others)
+        table.setEnabled(path not in self.unreadable)
         self.paths.append((path, table))
         return table
 
@@ -201,6 +207,8 @@ class PronunciationDialog(QDialog):
             QMessageBox.warning(self, self.tr("Pronunciations"), str(exc))
             return
         for path, entries in lists:
+            if path in self.unreadable:
+                continue
             if entries or path.exists():
                 save(path, entries)
         super().accept()

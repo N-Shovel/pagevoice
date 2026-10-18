@@ -18,6 +18,8 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from pagevoice.textfile import decode
+
 COLUMNS = ["word", "sounds_like", "phonemes", "whole_word", "case_sensitive", "note"]
 _YES = {"yes", "y", "true", "1", "x"}
 _NO = {"no", "n", "false", "0", ""}
@@ -100,10 +102,8 @@ def parse(text: str) -> list[Entry]:
 
 
 def load(path: Path) -> list[Entry]:
-    try:
-        return parse(Path(path).read_text(encoding="utf-8-sig"))
-    except UnicodeDecodeError as exc:
-        raise LexiconError("This pronunciation list isn't UTF-8 text. Save it as UTF-8.") from exc
+    """Read a list saved by a spreadsheet or editor: UTF-8, UTF-16 or Windows-1252."""
+    return parse(decode(Path(path).read_bytes()).replace("\r\n", "\n"))
 
 
 def dump(entries: list[Entry]) -> str:

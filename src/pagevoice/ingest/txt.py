@@ -8,23 +8,12 @@ from pagevoice.cleanup.chapters import finish_chapters
 from pagevoice.cleanup.language import book_language, rules_for
 from pagevoice.cleanup.text import fix_characters, join_lines, split_markers, word_counts
 from pagevoice.document import Book, Chapter, Location, Paragraph, Reason, Span
+from pagevoice.textfile import decode
 
 _BLANK = re.compile(r"\n[ \t]*\n")
 # Project Gutenberg marks italics as _word_; the underscores aren't text.
 _EMPHASIS = re.compile(r"(?<![\w_])_([^_\n][^_]*?)_(?![\w_])")
 MAX_MARKER_BLOCKS = 6  # an unclosed "[Illustration" or "[Footnote" stops after this many
-
-
-def decode(data: bytes) -> str:
-    """UTF-8 (with or without BOM), UTF-16 with BOM, else Windows-1252."""
-    if data.startswith(b"\xef\xbb\xbf"):
-        return data[3:].decode("utf-8", errors="replace")
-    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return data.decode("utf-16", errors="replace")
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError:
-        return data.decode("cp1252", errors="replace")
 
 
 def read_txt(path: Path, *, language: str | None = None) -> Book:

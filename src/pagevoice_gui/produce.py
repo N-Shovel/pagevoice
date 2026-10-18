@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pagevoice.export.audiobook import Metadata, export_m4b, export_mp3
+from pagevoice.export.audiobook import Metadata, TargetExists, export_m4b, export_mp3
 from pagevoice.export.ffmpeg import Cancelled, FfmpegError
 from pagevoice.pronounce.store import entries_for
 from pagevoice.render.cache import RenderCache
@@ -416,10 +416,20 @@ class ProducePage(QWidget):
             self.choose_target()
             return
         target = Path(text)
+        as_mp3 = self.mp3.isChecked()
+        overwrite = False
+        if not as_mp3 and target.exists():  # it may be an audiobook the user bought
+            answer = QMessageBox.question(
+                self,
+                self.tr("Export"),
+                self.tr("%1 already exists. Replace it?").replace("%1", target.name),
+            )
+            if answer != QMessageBox.Yes:
+                return
+            overwrite = True
         plan = self._planner()
         self._begin(rendering=False)
         self.free_button.hide()
-        as_mp3 = self.mp3.isChecked()
         self.export_status.setText(self.tr("Checking that everything is rendered…"))
 
         def work(report):
@@ -436,7 +446,7 @@ class ProducePage(QWidget):
             )
             if as_mp3:
                 return export_mp3(renderer, target, **options)
-            return [export_m4b(renderer, target, **options)]
+            return [export_m4b(renderer, target, overwrite=overwrite, **options)]
 
         run_task(work, on_progress=self._export_progress, on_done=self._export_done,
                  on_failed=lambda exc: self._failed(exc, retry=self.start_export))  # fmt: skip
@@ -491,7 +501,7 @@ class ProducePage(QWidget):
                 else self.tr("Stopped. No audiobook file was written.")
             )
             return
-        if isinstance(exc, VoiceUnavailable | FfmpegError):
+        if isinstance(exc, VoiceUnavailable | FfmpegError | TargetExists):
             message = str(exc)  # already plain language
         elif isinstance(exc, LookupError):
             message = self.tr("Some rendered audio is missing. Press Render, then export again.")

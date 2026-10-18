@@ -436,3 +436,16 @@ def test_linux_player_is_found(monkeypatch, tmp_path):
     assert playback.player_command(tmp_path / "a.wav") == ["paplay", str(tmp_path / "a.wav")]
     monkeypatch.setattr(playback.shutil, "which", lambda name: None)
     assert playback.player_command(tmp_path / "a.wav") is None
+
+
+def test_a_list_that_cant_be_read_is_never_saved_over(window, env, tmp_path):
+    """Review finding 2: Save used to write the empty table over the unreadable file."""
+    broken = tmp_path / "book.tsv"
+    original = "Anne\tAnn\t\tmaybe\n"  # "maybe" isn't yes or no
+    broken.write_text(original, encoding="utf-8")
+    dialog = PronunciationDialog(broken, tmp_path / "g.tsv", lambda t, e: None)
+    assert env and "won't be changed" in env[-1][1][2]
+    dialog.global_table.add(Entry("Polish", "poh-lish"))
+    dialog.accept()
+    assert broken.read_text(encoding="utf-8") == original
+    assert load(tmp_path / "g.tsv")[0].word == "Polish"  # the readable list still saves

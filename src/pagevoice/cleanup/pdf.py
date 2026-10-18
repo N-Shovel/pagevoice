@@ -359,7 +359,7 @@ def build_book(extracted: Extracted, *, fallback_title: str, language: str | Non
         source_format="pdf",
     )
     for page in pages:
-        if not page.lines and page.has_images:
+        if page.is_scan:
             book.flags.append(PageFlag(page.number, "scanned", SCANNED_PAGE_MESSAGE))
         if page.number in layout.multi_column:
             book.flags.append(PageFlag(page.number, "multi_column", MULTI_COLUMN_MESSAGE))

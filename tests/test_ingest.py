@@ -461,3 +461,60 @@ def test_two_bookmarks_on_one_page_both_survive(tmp_path):
     canvas.save()
     titles = [c.title for c in read_book(path).chapters]
     assert any("Part One" in t for t in titles) and any("The Start" in t for t in titles)
+
+
+def _scan_pdf(path: Path, pages: int, stamp_page: int | None, text_pages: int = 0) -> Path:
+    """Page-sized pictures (a scan), optionally a short text stamp on one of them, then
+    some ordinary text pages."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    from tests.test_export import tiny_png
+
+    picture = ImageReader(__import__("io").BytesIO(tiny_png()))
+    width, height = A4
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    for number in range(1, pages + 1):
+        pdf.drawImage(picture, 0, 0, width, height)
+        if number == stamp_page:
+            pdf.setFont("Helvetica", 9)
+            pdf.drawString(72, 40, "Digitized by the Example Library")
+        pdf.showPage()
+    for _ in range(text_pages):
+        pdf.setFont("Helvetica", 11)
+        for row in range(30):
+            pdf.drawString(72, height - 72 - row * 16, f"An ordinary line of book text, row {row}.")
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+def test_scan_with_a_text_stamp_is_refused(tmp_path):
+    """A library scan with one "Digitized by" line must not become an audiobook of that
+    line (SPEC §3: never read out garbage)."""
+    with pytest.raises(IngestError, match="OCR"):
+        read_book(_scan_pdf(tmp_path / "scan.pdf", 6, stamp_page=1))
+
+
+def test_a_few_scanned_plates_are_flagged_not_refused(tmp_path):
+    book = read_book(_scan_pdf(tmp_path / "plates.pdf", 2, stamp_page=1, text_pages=4))
+    assert [(f.page, f.kind) for f in book.flags] == [(1, "scanned"), (2, "scanned")]
+
+
+def test_pdf_pages_are_closed_as_they_are_read(monkeypatch):
+    """pdfplumber keeps every page's objects until the page is closed (~5 MB a page).
+    Closing them all when the file closes is too late: each must close before the next."""
+    from pdfplumber.page import Page
+
+    closed, seen = [], []
+    real_close, real_words = Page.close, Page.extract_words
+    monkeypatch.setattr(Page, "close", lambda self: closed.append(1) or real_close(self))
+
+    def words(self, *args, **kwargs):
+        seen.append(len(closed))  # pages closed before this one is read
+        return real_words(self, *args, **kwargs)
+
+    monkeypatch.setattr(Page, "extract_words", words)
+    read_book(TRAPS / "trap-lantern" / "book.pdf")
+    assert len(seen) > 2 and seen == list(range(len(seen)))

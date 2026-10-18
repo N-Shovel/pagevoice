@@ -80,6 +80,11 @@ class Line:
         return main or self.words
 
 
+SCAN_COVER = 0.8  # an image covering this much of the page...
+SCAN_MAX_WORDS = 25  # ...under fewer words than this is a scanned page
+SCANS_TO_REFUSE = 0.8  # refuse a PDF when at least this share of its pages are scans
+
+
 @dataclass
 class Page:
     number: int
@@ -87,8 +92,18 @@ class Page:
     height: float
     lines: list[Line] = field(default_factory=list)
     has_images: bool = False
+    image_cover: float = 0.0  # share of the page the largest image covers
     tables: list[tuple[float, float, float, float]] = field(default_factory=list)  # bboxes
     rules: list[float] = field(default_factory=list)  # y of short horizontal lines
+
+    @property
+    def is_scan(self) -> bool:
+        """A picture of a page: no text, or a page-sized image under a short text stamp
+        ("Digitized by …"). An OCR'd scan has a full text layer, so it isn't one."""
+        if not self.lines:
+            return self.has_images
+        words = sum(len(line.words) for line in self.lines)
+        return self.image_cover >= SCAN_COVER and words < SCAN_MAX_WORDS
 
 
 @dataclass
@@ -146,6 +161,16 @@ def extract(path: Path) -> Extracted:
         for index, raw in enumerate(pdf.pages, 1):
             page = Page(index, float(raw.width), float(raw.height))
             page.has_images = bool(raw.images)
+            area = page.width * page.height or 1.0
+            page.image_cover = max(
+                (
+                    (float(i["x1"]) - float(i["x0"]))
+                    * (float(i["bottom"]) - float(i["top"]))
+                    / area
+                    for i in raw.images
+                ),
+                default=0.0,
+            )
             words = raw.extract_words(
                 extra_attrs=["size", "fontname"],
                 keep_blank_chars=False,
@@ -179,6 +204,7 @@ def extract(path: Path) -> Extracted:
                 and 20 < float(e["x1"]) - float(e["x0"]) < 0.6 * page.width
             ]
             pages.append(page)
+            raw.close()  # pdfplumber caches each page's objects until closed (~5 MB a page)
         language = ""
         try:
             lang = pdf.doc.catalog.get("Lang")
@@ -217,6 +243,10 @@ def read_pdf(path: Path, *, language: str | None = None) -> Book:
     from pagevoice.cleanup.pdf import build_book
 
     extracted = extract(path)
-    if not any(page.lines for page in extracted.pages):
+    pages = extracted.pages
+    scans = sum(1 for page in pages if page.is_scan)
+    # Mostly pictures of pages (perhaps with a text stamp): refuse plainly rather than make
+    # an audiobook of the stamp (SPEC §3). A few scanned pages are only flagged in review.
+    if not any(page.lines for page in pages) or (pages and scans / len(pages) >= SCANS_TO_REFUSE):
         raise IngestError(SCANNED_MESSAGE)
     return build_book(extracted, fallback_title=path.stem, language=language)

@@ -9,11 +9,13 @@ renamed when complete, so a cancelled or failed export never leaves a file that 
 After a successful export the book's render cache can be cleared (D26).
 """
 
+import json
 import logging
 import os
 import re
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,7 +23,7 @@ from pathlib import Path
 import soundfile
 
 from pagevoice import __version__
-from pagevoice.export.ffmpeg import Cancelled, find_ffmpeg, run
+from pagevoice.export.ffmpeg import Cancelled, FfmpegError, find_ffmpeg, run
 from pagevoice.render.renderer import Renderer
 from pagevoice.voice.kokoro import SAMPLE_RATE
 
@@ -31,7 +33,7 @@ BITRATE = "64k"
 COVER_EXT = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png"}
 # ISO 639-1 to the ISO 639-2 codes audio tags use. A code table, not language rules.
 ISO639_2 = {"en": "eng"}
-MP3_NAME = re.compile(r"^\d{3} - .*\.mp3$")
+EXPORT_RECORD = ".pagevoice-export.json"  # which MP3s PageVoice wrote here, per book
 Progress = Callable[[str, float], None]  # (step, 0..1)
 
 
@@ -102,6 +104,46 @@ def _cover_file(meta: Metadata, folder: Path) -> Path | None:
     return path
 
 
+class TargetExists(FileExistsError):
+    """The audiobook file is already there; replacing it needs overwrite=True."""
+
+    def __init__(self, target: Path) -> None:
+        super().__init__(f"{target} already exists. Choose another name, or replace it.")
+        self.target = target
+
+
+def _put_in_place(partial: Path, target: Path, attempts: int = 20) -> None:
+    """Rename the finished .part file onto the target. On Windows that fails while a
+    player has the target open: retry a moment, then remove the .part and say why."""
+    for attempt in range(attempts):
+        try:
+            os.replace(partial, target)
+            return
+        except PermissionError:
+            if attempt < attempts - 1:
+                time.sleep(0.1)
+    partial.unlink(missing_ok=True)
+    raise FfmpegError(
+        f"{target.name} is open in another program, so it can't be replaced. Close it "
+        "(for example in your audio player) and export again."
+    )
+
+
+def _read_record(folder: Path) -> dict[str, list[str]]:
+    try:
+        data = json.loads((folder / EXPORT_RECORD).read_text(encoding="utf-8"))
+        return {str(k): [str(n) for n in v] for k, v in data.items()}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return {}
+
+
+def _write_record(folder: Path, record: dict[str, list[str]]) -> None:
+    path = folder / EXPORT_RECORD
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _finish(renderer: Renderer, clear_cache: bool) -> None:
     if clear_cache:
         freed = renderer.cache.clear_book(renderer.book_id)
@@ -116,14 +158,18 @@ def export_m4b(
     progress: Progress | None = None,
     stop: threading.Event | None = None,
     clear_cache: bool = False,
+    overwrite: bool = False,
 ) -> Path:
     """One M4B with chapters, cover and metadata. Every paragraph must be rendered.
 
-    clear_cache deletes the book's render cache once the file is written (D26); leave it
-    off while the book is still being edited."""
+    An existing target is replaced only with overwrite=True (TargetExists otherwise): it
+    may be an audiobook the user bought. clear_cache deletes the book's render cache once
+    the file is written (D26); leave it off while the book is still being edited."""
+    target = Path(target)
+    if target.exists() and not overwrite:
+        raise TargetExists(target)
     find_ffmpeg()  # fail before minutes of chapter preparation, not after
     meta = meta or Metadata.from_book(renderer.book)
-    target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     with _work_folder(renderer) as tmp:
         folder = Path(tmp)
@@ -173,7 +219,7 @@ def export_m4b(
         except BaseException:
             partial.unlink(missing_ok=True)
             raise
-        os.replace(partial, target)
+        _put_in_place(partial, target)
     _finish(renderer, clear_cache)
     return target
 
@@ -194,8 +240,9 @@ def export_mp3(
 ) -> list[Path]:
     """One MP3 per chapter, numbered so they sort in order, tagged, with the cover.
 
-    Once all chapters are written, earlier exports' "NNN - Title.mp3" files in the folder
-    that weren't rewritten are removed, so a renamed chapter doesn't leave its old file.
+    Once all chapters are written, files an earlier export of this same book wrote here
+    and this one didn't are removed (a renamed chapter's old file). A small record file in
+    the folder says which files those are; nothing else in the folder is touched.
     If cancelled, the chapters already finished are kept: Cancelled.written lists them."""
     find_ffmpeg()
     meta = meta or Metadata.from_book(renderer.book)
@@ -247,13 +294,19 @@ def export_mp3(
                 except BaseException:
                     partial.unlink(missing_ok=True)
                     raise
-                os.replace(partial, target)
+                _put_in_place(partial, target)
                 written.append(target)
         except Cancelled as exc:
             exc.written = written
             raise
-    for old in folder.iterdir():
-        if MP3_NAME.match(old.name) and old not in written:
-            old.unlink(missing_ok=True)
+    # Remove only what an earlier export of this same book wrote here and this one didn't
+    # (a renamed chapter's old file). Other files, other books' included, are never touched.
+    record = _read_record(folder)
+    names = {p.name for p in written}
+    for name in record.get(renderer.book_id, []):
+        if name not in names and (folder / name).is_file():
+            (folder / name).unlink(missing_ok=True)
+    record[renderer.book_id] = sorted(names)
+    _write_record(folder, record)
     _finish(renderer, clear_cache)
     return written

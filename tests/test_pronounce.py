@@ -116,3 +116,13 @@ def test_respellings_and_phonemes_reach_misaki_intact():
     assert "dˌi" not in spoken("Darcy smiled.", [Entry("Darcy", "DAR-see")])  # not "D A R"
     assert "kˈOkəɹO" in spoken("Kokoro spoke.", [Entry("Kokoro", phonemes="kˈOkəɹO")])
     assert g2p.last_warning is None
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-8-sig", "utf-8"])
+def test_lists_saved_by_excel_are_read(tmp_path, encoding):
+    """Excel's "Text (Tab delimited)" is Windows-1252 and "Unicode Text" is UTF-16."""
+    path = tmp_path / "names.tsv"
+    path.write_bytes("Siobhán\tshi-vawn\r\nNiamh\tneev\r\n".encode(encoding))
+    assert [(e.word, e.sounds_like) for e in load(path)] == [
+        ("Siobhán", "shi-vawn"), ("Niamh", "neev")
+    ]  # fmt: skip
