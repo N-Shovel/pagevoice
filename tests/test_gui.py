@@ -436,3 +436,34 @@ def test_linux_player_is_found(monkeypatch, tmp_path):
     assert playback.player_command(tmp_path / "a.wav") == ["paplay", str(tmp_path / "a.wav")]
     monkeypatch.setattr(playback.shutil, "which", lambda name: None)
     assert playback.player_command(tmp_path / "a.wav") is None
+
+
+def _button(widget, text):
+    from PySide6.QtWidgets import QPushButton
+
+    return next(b for b in widget.findChildren(QPushButton) if b.text() == text)
+
+
+def test_real_buttons_move_between_steps(window, monkeypatch):
+    """Click the actual buttons (not the methods): a button wired straight to a signal
+    fails only when clicked ("native Qt signal instance is not callable")."""
+    opened = []
+    monkeypatch.setattr(PronunciationDialog, "exec", lambda self: opened.append(self) or 0)
+    open_book(window, PDF)
+    _button(window.review_page, "Continue to voice and export").click()
+    assert window.stack.currentIndex() == PRODUCE
+    _button(window.produce_page, "Pronunciations…").click()
+    assert len(opened) == 1
+    _button(window.produce_page, "Back to review").click()
+    assert window.stack.currentIndex() == REVIEW
+
+
+def test_open_page_text_has_room(window):
+    window.show()
+    QApplication.processEvents()
+    page = window.open_page
+    status, title = page.status, page.findChildren(type(page.status))[0]
+    assert status.width() >= 400
+    assert status.height() >= status.heightForWidth(status.width())  # not squeezed
+    assert title.geometry().bottom() <= status.geometry().top()  # no overlap
+    window.hide()
