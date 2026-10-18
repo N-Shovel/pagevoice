@@ -27,6 +27,7 @@ from pagevoice.document import Book, Chapter, Location, PageFlag, Paragraph, Rea
 from pagevoice.ingest.pdf import Extracted, Line, Page
 
 STRIP = 0.2  # running heads and footers sit in the top or bottom fifth of the page
+MARK_SLACK = 6.0  # points: a bookmark may point a little below its heading's top
 _ROMAN = re.compile(r"^[ivxlcdm]+$", re.I)
 _PAGE_NUMBER = re.compile(r"^[-–—(\[]?\s*(\d{1,4}|[ivxlcdm]{1,8})\s*[-–—)\]]?$", re.I)
 # "12 THE WISDOM OF LIFE", "DIVISION OF THE SUBJECT 5", "X SCHOPENHAUER", "xii PREFACE"
@@ -496,20 +497,25 @@ def _chapters(
 ) -> list[Chapter]:
     front: list[Paragraph] = []
     chapters: list[Chapter] = []
+    # (page, top, title): a bookmark that points partway down a page starts its chapter
+    # there, not at the top of the page (top 0 when it names the page as a whole).
     bookmarks = sorted(
-        ((page, name) for name, page in extracted.bookmarks), key=lambda mark: mark[0]
+        ((page, (top or 0.0) - MARK_SLACK, name) for name, page, top in extracted.bookmarks),
+        key=lambda mark: mark[:2],
     )
     use_bookmarks = len(bookmarks) >= 2
     marks = iter(bookmarks)
     next_mark = next(marks, None)
     current: Chapter | None = None
+    starts: dict[int, tuple[int, float]] = {}  # id(chapter) -> where it begins
 
     for paragraph in paragraphs:
-        page = _first_page(paragraph)
+        place = _first_place(paragraph)
         heading = paragraph.kind == "heading" and paragraph.text
         if use_bookmarks:
-            while next_mark is not None and page is not None and page >= next_mark[0]:
-                current = Chapter(title=next_mark[1], start_page=next_mark[0])
+            while next_mark is not None and place is not None and place >= next_mark[:2]:
+                current = Chapter(title=next_mark[2], start_page=next_mark[0])
+                starts[id(current)] = next_mark[:2]
                 chapters.append(current)
                 next_mark = next(marks, None)
         elif heading and rules.is_chapter_heading(paragraph.text):
@@ -519,7 +525,7 @@ def _chapters(
             if only_headings:
                 current.title += " " + paragraph.text  # "BOOK II" then "CHAPTER I"
             else:
-                current = Chapter(title=paragraph.text, start_page=page)
+                current = Chapter(title=paragraph.text, start_page=place[0] if place else None)
                 chapters.append(current)
         elif (
             heading and current is not None and all(p.kind == "heading" for p in current.paragraphs)
@@ -532,16 +538,27 @@ def _chapters(
     else:
         result = [Chapter(title=title, paragraphs=front)]
 
-    # Footnotes go to the end of the chapter their page belongs to (D11).
+    # Footnotes go to the end of the chapter their place on the page belongs to (D11).
     for note in notes:
-        page = _first_page(note) or 0
+        place = _first_place(note) or (0, 0.0)
         owner = result[0]
         for chapter in result:
-            start = chapter.start_page or _first_page_of(chapter)
-            if start is not None and start <= page:
+            start = starts.get(id(chapter))
+            if start is None:
+                page = chapter.start_page or _first_page_of(chapter)
+                start = None if page is None else (page, -MARK_SLACK)
+            if start is not None and start <= place:
                 owner = chapter
         owner.notes.append(note)
     return result
+
+
+def _first_place(paragraph: Paragraph) -> tuple[int, float] | None:
+    """(page, distance from the top) where a paragraph starts."""
+    span = next((s for s in paragraph.spans if s.location.page), None)
+    if span is None:
+        return None
+    return (span.location.page, span.location.top or 0.0)
 
 
 def _first_page_of(chapter: Chapter) -> int | None:

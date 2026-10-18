@@ -717,3 +717,44 @@ def test_restored_hyphen_goes_back_after_the_right_word(tmp_path):
     hyphen = next(s for s in paragraph.spans if s.reason == Reason.HYPHEN)
     set_restored(hyphen, True)
     assert paragraph.text == "It was a word and only a word and then a word-less silence fell."
+
+
+def test_bookmark_partway_down_a_page_starts_the_chapter_there(tmp_path):
+    """Review finding 7: chapter Two began at the top of its page, taking the end of One."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    path = tmp_path / "marks.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    top = A4[1] - 100
+
+    def heading(key, title, y):
+        pdf.bookmarkPage(key, fit="XYZ", top=y + 20)
+        pdf.addOutlineEntry(title, key, level=0)
+        pdf.setFont("Helvetica-Bold", 18)
+        pdf.drawString(72, y, title)
+        pdf.setFont("Helvetica", 11)
+
+    heading("one", "One", top)
+    body = [
+        "    The first chapter begins on the first page, and it goes on",
+        "for a few lines so that the page has a left margin and an",
+        "ordinary paragraph shape before the page ends.",
+    ]
+    for n, line in enumerate(body):
+        pdf.drawString(72, top - 40 - 15 * n, line)
+    pdf.showPage()
+    pdf.setFont("Helvetica", 11)
+    for n, line in enumerate(
+        ["    This is the LAST paragraph of chapter one, which", "starts at the top of page two."]
+    ):
+        pdf.drawString(72, top - 15 * n, line)
+    heading("two", "Two", top - 300)
+    pdf.drawString(72, top - 340, "Chapter two begins halfway down the page.")
+    pdf.save()
+
+    book = read_book(path)
+    by_title = {c.title: " ".join(p.text for p in c.paragraphs) for c in book.chapters}
+    assert "LAST paragraph of chapter one" in by_title["One"]
+    assert "LAST paragraph of chapter one" not in by_title["Two"]
+    assert "Chapter two begins halfway down the page." in by_title["Two"]
