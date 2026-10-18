@@ -171,6 +171,8 @@ def extract(path: Path) -> Extracted:
                 ),
                 default=0.0,
             )
+            # Text drawn twice, slightly offset ("fake bold"), would read "CChhaapptteerr".
+            raw = raw.dedupe_chars()
             words = raw.extract_words(
                 extra_attrs=["size", "fontname"],
                 keep_blank_chars=False,

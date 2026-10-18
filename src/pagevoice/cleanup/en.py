@@ -13,7 +13,13 @@ CHAPTER = re.compile(
     r"^\s*(?:prologue|epilogue|preface|introduction|foreword|afterword)\s*\.?\s*$",
     re.IGNORECASE,
 )
-CAPTION = re.compile(r"^\s*(?:fig(?:ure)?\.?|table|plate|illustration)\s+[\dIVXLC]+[.:\s]", re.I)
+# "Figure 1. The lantern room", "Table 2: Harvests", "Plate IV", "Fig. 3 The coast". Not
+# "Table 2 shows that…": after the number comes punctuation, a capital or the end.
+_CAPTION_START = r"^\s*(?i:fig(?:ure)?\.?|table|plate|illustration)\s+[\dIVXLC]+[a-z]?"
+CAPTION = re.compile(_CAPTION_START + r"(?:\s*[.:–—-]|\s+[^\sa-z]|\s*$)")
+_CAPTION_WORD = re.compile(_CAPTION_START + r"\s+[a-z]")
+# One-letter words: a drop cap that is one ("I was born", "A long time") keeps its space.
+ONE_LETTER_WORDS = frozenset({"A", "I"})
 
 # Project Gutenberg plain text marks pictures as "[Illustration: caption]", sometimes
 # over several blank-line-separated blocks.
@@ -37,7 +43,8 @@ def is_chapter_heading(text: str) -> bool:
 
 
 def is_caption(text: str) -> bool:
-    return bool(CAPTION.match(text))
+    """A caption's opening. "Table 2 shows that…" is a sentence about a table, not one."""
+    return bool(CAPTION.match(text)) and not _CAPTION_WORD.match(text)
 
 
 FRONT_MATTER_TITLE = "Front matter"

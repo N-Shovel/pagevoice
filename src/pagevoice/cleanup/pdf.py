@@ -74,6 +74,8 @@ class Layout:
     line_gap: float
     roles: dict[int, Role] = field(default_factory=dict)  # id(line) -> role
     multi_column: set[int] = field(default_factory=set)  # page numbers
+    word_counts: Counter = field(default_factory=Counter)  # the book's words, lowercased
+    one_letter_words: frozenset = frozenset()  # from the language module
 
 
 def _normal(text: str) -> str:
@@ -256,6 +258,7 @@ def _multi_column(page: Page, layout: Layout) -> bool:
 def analyse(pages: list[Page], rules) -> Layout:
     body = _body_size(pages)
     layout = Layout(body_size=body, line_gap=_line_gap(pages, body))
+    layout.one_letter_words = getattr(rules, "ONE_LETTER_WORDS", frozenset())
     _find_headers_footers(pages, layout, rules)
     for page in pages:
         _find_footnotes(page, layout)
@@ -291,7 +294,7 @@ def _line_spans(line: Line, layout: Layout) -> list[Span]:
             continue
         # Drop cap: a single big capital followed by the rest of its word ("T he").
         drop_cap = index == 0 and len(text) == 1 and text.isupper() and word.size >= 1.6 * size
-        if drop_cap and len(words) > 1:
+        if drop_cap and len(words) > 1 and _joins_drop_cap(text, words[1].text, layout):
             words[1].space_before = False
         # Small caps: shrunken capitals. "I" + "T" -> "It", "MR." -> "Mr."
         letters = any(c.isalpha() for c in text)
@@ -301,6 +304,17 @@ def _line_spans(line: Line, layout: Layout) -> list[Span]:
             text = text.lower() if joined else text.capitalize()
         spans.append(Span(gap + text, location=location))
     return spans
+
+
+def _joins_drop_cap(cap: str, rest: str, layout: Layout) -> bool:
+    """Join a drop cap to the next word ("T" + "he"), unless the capital is a word on its
+    own and so is the next word ("I" + "was", "A" + "long"). Evidence from the book, like
+    the hyphen rule (D12): "I" + "t" joins, because "t" never stands alone."""
+    if cap not in layout.one_letter_words:
+        return True
+    tail = _WORD.match(rest)
+    # Counts include this line itself, so "elsewhere" means more than once.
+    return not (tail and layout.word_counts.get(tail.group(0).lower(), 0) > 1)
 
 
 def _text_of(spans: list[Span]) -> str:
@@ -387,6 +401,7 @@ def build_book(extracted: Extracted, *, fallback_title: str, language: str | Non
             book.flags.append(PageFlag(page.number, "multi_column", MULTI_COLUMN_MESSAGE))
 
     counts = word_counts(line.text for page in pages for line in page.lines)
+    layout.word_counts = counts
     builder = _Builder(counts)
     note_builder = _Builder(counts)  # footnotes, joined like body text
     prev: Line | None = None

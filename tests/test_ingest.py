@@ -619,3 +619,77 @@ def test_recurring_numbered_heads_are_still_removed(tmp_path):
     book = read_book(_spaced_pdf(tmp_path / "heads.pdf", pages))
     heads = [s for s in book.removals if s.reason == Reason.HEADER]
     assert len(heads) == 6 and all(s.location.page for s in heads)
+
+
+def _drop_cap_pdf(path: Path, openings: list[tuple[str, str]]) -> Path:
+    """Each page opens with a big drop-cap letter beside the rest of its first line, then
+    ordinary lines that use some words again (the evidence the rule looks for)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    for cap, rest in openings:
+        top = A4[1] - 100
+        pdf.setFont("Helvetica", 40)
+        pdf.drawString(72, top - 20, cap)
+        pdf.setFont("Helvetica", 11)
+        pdf.drawString(104, top, rest)
+        for n, line in enumerate(
+            ["The lamp was long and the night was long.", "He was there and so was she."]
+        ):
+            pdf.drawString(72, top - 60 - 15 * n, line)
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+@pytest.mark.parametrize(
+    ("cap", "rest", "reads"),
+    [
+        ("T", "he tower stood alone.", "The tower stood alone."),
+        ("I", "t stood alone.", "It stood alone."),
+        ("I", "was born in the village.", "I was born in the village."),
+        ("A", "long time ago it stood.", "A long time ago it stood."),
+    ],
+)
+def test_drop_caps_join_only_with_evidence(tmp_path, cap, rest, reads):
+    """Review finding 12: "I" + "was" became "Iwas", "A" + "long" became "Along"."""
+    book = read_book(_drop_cap_pdf(tmp_path / "cap.pdf", [(cap, rest)]))
+    text = " ".join(p.text for c in book.chapters for p in c.paragraphs)
+    assert text.startswith(reads)
+
+
+def test_text_drawn_twice_is_read_once(tmp_path):
+    """Review finding 15: "fake bold" (the same text drawn twice, a hair apart)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    path = tmp_path / "bold.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    pdf.setFont("Helvetica", 20)
+    for dx in (0, 0.4):
+        pdf.drawString(72 + dx, A4[1] - 100, "Chapter 1")
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(72, A4[1] - 140, "The tower stood alone on the rock.")
+    pdf.save()
+    book = read_book(path)
+    text = " ".join(p.text for c in book.chapters for p in c.paragraphs)
+    assert "Chapter 1" in text and "CChh" not in text
+
+
+@pytest.mark.parametrize(
+    ("text", "caption"),
+    [
+        ("Figure 1. The lantern room at dusk.", True),
+        ("Table 2: Harvests by year", True),
+        ("Fig. 3 The coast at low tide", True),
+        ("Plate IV", True),
+        ("Table 2 shows that the harvest doubled between the two surveys.", False),
+        ("Figure 3 makes the point clearer than any table could.", False),
+    ],
+)
+def test_captions_need_a_caption_shape(text, caption):
+    """Review finding 13: body sentences that begin "Table 2 …" aren't captions."""
+    from pagevoice.cleanup.en import is_caption
+
+    assert is_caption(text) is caption
