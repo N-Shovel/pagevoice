@@ -547,3 +547,75 @@ def test_epub_svg_title_is_a_figure_removal(tmp_path):
     figures = [s.text for s in all_spans(book) if s.reason == Reason.FIGURE]
     assert "A map of the coast" in figures
     assert "One" not in [s.text.strip() for s in all_spans(book)]  # <head><title> isn't text
+
+
+def _spaced_pdf(path: Path, pages: list[list[str]]) -> Path:
+    """Word-export style: body text with a blank line's space between paragraphs, so
+    each paragraph stands apart from the next (as running heads do)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    for paragraphs in pages:
+        pdf.setFont("Helvetica", 11)
+        y = A4[1] - 72
+        for paragraph in paragraphs:
+            for line in paragraph.split("\n"):
+                pdf.drawString(72, y, line)
+                y -= 15
+            y -= 15  # space after the paragraph
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+WORDS = [
+    "lamp",
+    "gull",
+    "rope",
+    "tide",
+    "boat",
+    "stone",
+    "wind",
+    "salt",
+    "mast",
+    "bell",
+    "oar",
+    "net",
+    "fog",
+    "cliff",
+    "wave",
+    "reef",
+]
+
+
+def filler(page: int, part: int) -> str:
+    """Body text that differs on every page in its words (running-head detection ignores
+    digits, and text repeating at the top of most pages is a running head)."""
+    pick = [WORDS[(page * 7 + part * 3 + n) % len(WORDS)] for n in range(9)]
+    return "\n".join(
+        f"The keeper found the {pick[3 * n]} by the {pick[3 * n + 1]} near the {pick[3 * n + 2]}."
+        for n in range(3)
+    )
+
+
+def test_top_lines_shaped_like_numbered_heads_are_kept(tmp_path):
+    """Review finding 14: one page starting "I never…" or ending "…1914" isn't a head."""
+    pages = [
+        [filler(1, 1), filler(1, 2)],
+        ["I never saw him again after that summer.", filler(2, 1)],
+        ["and the bill came to 1914", filler(3, 1)],
+        [filler(4, 1), filler(4, 2)],
+    ]
+    book = read_book(_spaced_pdf(tmp_path / "word.pdf", pages))
+    text = " ".join(p.text for c in book.chapters for p in c.paragraphs)
+    assert "I never saw him again after that summer." in text
+    assert "and the bill came to 1914" in text
+    assert not [s for s in book.removals if s.reason == Reason.HEADER]
+
+
+def test_recurring_numbered_heads_are_still_removed(tmp_path):
+    pages = [[f"{n} THE LANTERN KEEPER", filler(n, 1)] for n in range(2, 8)]
+    book = read_book(_spaced_pdf(tmp_path / "heads.pdf", pages))
+    heads = [s for s in book.removals if s.reason == Reason.HEADER]
+    assert len(heads) == 6 and all(s.location.page for s in heads)

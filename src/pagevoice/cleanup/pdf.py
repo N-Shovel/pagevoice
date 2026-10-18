@@ -29,10 +29,25 @@ from pagevoice.ingest.pdf import Extracted, Line, Page
 STRIP = 0.2  # running heads and footers sit in the top or bottom fifth of the page
 _ROMAN = re.compile(r"^[ivxlcdm]+$", re.I)
 _PAGE_NUMBER = re.compile(r"^[-–—(\[]?\s*(\d{1,4}|[ivxlcdm]{1,8})\s*[-–—)\]]?$", re.I)
-# "12 THE WISDOM OF LIFE" or "DIVISION OF THE SUBJECT 5"
+# "12 THE WISDOM OF LIFE", "DIVISION OF THE SUBJECT 5", "X SCHOPENHAUER", "xii PREFACE"
 _NUMBERED_HEAD = re.compile(
     r"^(\d{1,4}|[ivxlc]{1,6})\s+\D.*$|^.*\D\s+(\d{1,4}|[ivxlc]{1,6})$", re.I
 )
+
+
+def _numbered_head(text: str) -> bool:
+    """A running head's shape. Its Roman numeral is all lower or all upper case, and not
+    a lone "I" (the pronoun: "I never saw him again"), so "Vic" or "Lili" don't count."""
+    match = _NUMBERED_HEAD.match(text)
+    if not match:
+        return False
+    number = match.group(1) or match.group(2)
+    if number.isalpha():
+        return number != "I" and (number.islower() or number.isupper())
+    return True
+
+
+NUMBERED_HEAD_SHARE = 0.3  # the shape must top at least this share of pages (and 3)
 _MARKER = re.compile(r"^[\d*†‡§¶]{1,3}[.)]?$")
 _NOTE_START = re.compile(r"^[\d*†‡§¶]{1,3}[.)]?\s")
 _SMALL_CAPS_FONT = re.compile(r"smallcaps|small-caps|[-+,]sc\b|caps", re.I)
@@ -132,12 +147,19 @@ def _find_headers_footers(pages: list[Page], layout: Layout, rules) -> None:
     for top, reason in ((True, Reason.HEADER), (False, Reason.FOOTER)):
         repeats: Counter[str] = Counter()
         slots: Counter[int] = Counter()
+        numbered = 0  # pages topped by a "number + text" line standing apart
         for page in text_pages:
             repeats.update({_normal(line.text) for line in _edge_lines(page, top)})
             for line in _edge_lines(page, top):
                 if _isolated(page, line, layout.line_gap, top):
                     slots[_slot(page, line)] += 1
+            edge = _edge_lines(page, top)[:1]
+            if top and edge and _isolated(page, edge[0], layout.line_gap, top):
+                numbered += _numbered_head(edge[0].text.strip())
         need = max(3, 0.4 * len(text_pages))
+        # One page starting "I never saw him" or ending "…came to 1914" isn't a running
+        # head: the shape has to recur, as real numbered heads do.
+        numbered_heads = numbered >= max(3, NUMBERED_HEAD_SHARE * len(text_pages))
         slot_need = max(3, 0.5 * len(text_pages))
         for page in text_pages:
             for line in _edge_lines(page, top):
@@ -151,7 +173,7 @@ def _find_headers_footers(pages: list[Page], layout: Layout, rules) -> None:
                 slot = _slot(page, line)
                 in_slot = any(slots[s] >= slot_need for s in (slot - 1, slot, slot + 1))
                 if (
-                    (top and isolated and _NUMBERED_HEAD.match(text))
+                    (top and isolated and numbered_heads and _numbered_head(text))
                     or repeats[_normal(text)] >= need
                     or (in_slot and isolated)
                 ):
