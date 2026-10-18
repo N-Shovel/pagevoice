@@ -2,11 +2,16 @@
 
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
-- **Last updated:** 2026-10-16
-- **Milestone:** M4, GUI. PR #8 merged; its review fixes are in a follow-up PR. M0–M3 are done except the owner items below.
-- **Branch:** m4-review-fixes
+- **Last updated:** 2026-10-19
+- **Milestone:** after M4: the external review's fixes, then the Listen feature. M0–M4 are done and merged (PRs #8, #9). M5 (installer) comes last.
+- **Branch:** review-safety-fixes
 - **State:** working. The other states are: not started, working, waiting for owner, done.
-- **Plan (owner, 2026-10-16):** work through M0–M4 without waiting, one PR per milestone, spec-reviewer at the end of each, merge when CI passes. Don't start M5. Choices that depend on the owner are made from the numbers and marked "provisional" in DECISIONS.md.
+- **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
+  1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
+  2. Add a Listen feature: play rendered chapters in the app (pause, seek, listen from a paragraph). Playback through sounddevice (proposed; license check first).
+  3. Fix the review's reading and cleanup findings.
+  4. M5, the installer, at the very end.
+- **Merging:** the permission settings don't allow Claude to run `gh pr merge`, so PRs wait for the owner's click unless they allow it.
 
 ## Done
 - Project setup, CI and branch protection (PR #1).
@@ -52,25 +57,25 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The spec-review fixes are in D34.
 
 ## In progress
-- **M4:** PR #8 is merged (first version); the follow-up PR from `m4-review-fixes` has the review fixes.
-  - What it is: the desktop app (`pagevoice-gui`): open → review → pronunciations → render → export, with every slow job off the UI thread. See D35.
-  - Spec review: done. All 7 violations and 14 concerns are fixed, including:
-    - review saves and big chapters no longer block the UI
-    - the cache size cap is a setting
-    - the cache is kept after export, with a button to free it
-    - the download always comes from our release outside development
-    - the download counts as busy work
-    - DirectML is offered when available
-    - the language override
-    - an unreadable saved review is kept as `.bak`
-    - merge and split remember titles
-    - strings go through translation
-- **Fast tests:** 251 passed, 3 skipped (25 GUI tests, headless).
+- **PR #11** (`gui-button-fixes`): Pronunciations, Back to review and Continue crashed when clicked; the open page's text was squeezed. Found by the owner. CI passed; waiting to be merged.
+- **Piece 1 on `review-safety-fixes`** (it includes #11 through a merge, so either can merge first):
+  - Findings fixed:
+    - 1: MP3 export only removes files it wrote for the same book (record file `.pagevoice-export.json`)
+    - 2: pronunciation lists are read in Excel's encodings and never saved over when unreadable
+    - 3: an existing M4B is replaced only after asking (`--overwrite` in the CLI)
+    - 4: PDF pages are closed as they're read
+    - 16: mostly-scanned PDFs are refused (80% of pages; a stamp page counts as a scan)
+    - 17: a stale render plan is discarded, and Pronunciations is locked during work
+    - 20: a target locked by a player gets a plain message and no `.part`
+    - 21: CLI `--chapters` keeps the cache
+    - the license checker rejects GPL-2.0-only
+  - Not done: quitting during a render leaves the process alive until the current paragraph ends. Low priority.
+- **Fast tests:** 280 passed, 1 skipped.
 
 ## Next step
-1. Get the follow-up PR from `m4-review-fixes` merged once CI passes.
-   - GitHub merged PR #8 at 0c4e4ce, the first GUI version, because the PR never picked up the later pushes. The spec-review fixes and the progress notes (5 commits) weren't in `main`; the follow-up PR carries them.
-2. Then M4 is done. Don't start M5.
+1. Open the piece 1 PR. Then piece 2 (Listen) on a new branch from `main`, after checking sounddevice's license with the add-dependency skill. Record the decision as D36.
+2. Then piece 3: findings 5–15, 18, 19, 22, 23, the rule gaps (SVG `<title>`, `txt.py` importing `cleanup.en`), and the test that can't fail. Cleanup fixes go through the add-cleanup-rule skill. Expected spoken forms are human-owned, so new ones go into `sentences.proposed.tsv`.
+3. M5 last.
 
 ## Waiting on the owner
 - **Model manifest:**

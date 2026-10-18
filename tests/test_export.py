@@ -272,17 +272,54 @@ def test_unsupported_cover_is_reported(renderer, tmp_path, monkeypatch, caplog):
     assert "no cover art" in caplog.text
 
 
-def test_mp3_reexport_removes_old_chapter_files_only(renderer, tmp_path, monkeypatch):
+def test_mp3_export_never_removes_other_books_files(renderer, tmp_path, monkeypatch):
+    """Review finding 1: a folder with another book's "001 - …mp3" files keeps them."""
     monkeypatch.setattr(audiobook, "run", FakeRun())
     folder = tmp_path / "mp3"
     folder.mkdir()
-    (folder / "004 - Old Chapter.mp3").write_bytes(b"old")
+    others = [folder / f"00{n} - Dune part {n}.mp3" for n in range(1, 6)]
+    for other in others:
+        other.write_bytes(b"someone else's")
     (folder / "notes.txt").write_text("mine")
-    (folder / "My favourite.mp3").write_bytes(b"mine")
     written = export_mp3(renderer, folder)
-    assert sorted(p.name for p in folder.iterdir()) == sorted(
-        [p.name for p in written] + ["notes.txt", "My favourite.mp3"]
-    )
+    assert all(o.read_bytes() == b"someone else's" for o in others if o not in written)
+    assert (folder / "notes.txt").exists()
+
+
+def test_mp3_reexport_removes_this_books_old_files(renderer, tmp_path, monkeypatch):
+    monkeypatch.setattr(audiobook, "run", FakeRun())
+    folder = tmp_path / "mp3"
+    first = export_mp3(renderer, folder)
+    renderer.book.chapters[2].title = "Three, renamed"
+    second = export_mp3(renderer, folder)
+    assert first[2] not in second and not first[2].exists()  # the renamed chapter's old file
+    assert all(p.exists() for p in second)
+
+
+def test_existing_m4b_is_only_replaced_when_asked(renderer, tmp_path, monkeypatch):
+    """Review finding 3: Dune.m4b next to Dune.epub may be an audiobook the user bought."""
+    monkeypatch.setattr(audiobook, "run", FakeRun())
+    bought = tmp_path / "book.m4b"
+    bought.write_bytes(b"bought")
+    with pytest.raises(audiobook.TargetExists):
+        export_m4b(renderer, bought)
+    assert bought.read_bytes() == b"bought"
+    export_m4b(renderer, bought, overwrite=True)
+    assert bought.read_bytes() == b"audio"
+
+
+def test_target_open_in_a_player_gets_a_plain_message(renderer, tmp_path, monkeypatch):
+    """Review finding 20: Windows refuses the rename while a player has the file open."""
+    monkeypatch.setattr(audiobook, "run", FakeRun())
+    monkeypatch.setattr(audiobook.time, "sleep", lambda _s: None)
+
+    def locked(_src, _dst):
+        raise PermissionError(32, "The process cannot access the file")
+
+    monkeypatch.setattr(audiobook.os, "replace", locked)
+    with pytest.raises(FfmpegError, match="open in another program"):
+        export_m4b(renderer, tmp_path / "book.m4b")
+    assert not list(tmp_path.glob("*.part"))
 
 
 def test_cancelled_mp3_export_keeps_finished_chapters(renderer, tmp_path, monkeypatch):

@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu(self.tr("&File"))
         self.open_action = QAction(self.tr("&Open a book…"), self, shortcut=QKeySequence.Open)
         self.open_action.triggered.connect(self.choose_book)
-        pronunciations = QAction(self.tr("&Pronunciations…"), self)
+        self.pronunciations_action = pronunciations = QAction(self.tr("&Pronunciations…"), self)
         pronunciations.triggered.connect(self.edit_pronunciations)
         settings = QAction(self.tr("&Settings…"), self)
         settings.triggered.connect(self.edit_settings)
@@ -174,6 +174,8 @@ class MainWindow(QMainWindow):
         self.steps.button(REVIEW).setEnabled(has_book and free)
         self.steps.button(PRODUCE).setEnabled(has_book and not self._opening)
         self.open_action.setEnabled(free)
+        # A pronunciation change mid-render could be left out of the export (finding 17).
+        self.pronunciations_action.setEnabled(not self._busy)
         self.open_page.button.setEnabled(free)
 
     def _set_busy(self, busy: bool) -> None:
@@ -277,6 +279,8 @@ class MainWindow(QMainWindow):
     # --- pronunciations and settings ---
 
     def edit_pronunciations(self) -> None:
+        if self._busy:
+            return
         book_path = self.session.pronunciations_path if self.session else None
         dialog = PronunciationDialog(book_path, global_path(), self.preview, self)
         if dialog.exec():

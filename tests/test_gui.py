@@ -438,6 +438,19 @@ def test_linux_player_is_found(monkeypatch, tmp_path):
     assert playback.player_command(tmp_path / "a.wav") is None
 
 
+def test_a_list_that_cant_be_read_is_never_saved_over(window, env, tmp_path):
+    """Review finding 2: Save used to write the empty table over the unreadable file."""
+    broken = tmp_path / "book.tsv"
+    original = "Anne\tAnn\t\tmaybe\n"  # "maybe" isn't yes or no
+    broken.write_text(original, encoding="utf-8")
+    dialog = PronunciationDialog(broken, tmp_path / "g.tsv", lambda t, e: None)
+    assert env and "won't be changed" in env[-1][1][2]
+    dialog.global_table.add(Entry("Polish", "poh-lish"))
+    dialog.accept()
+    assert broken.read_text(encoding="utf-8") == original
+    assert load(tmp_path / "g.tsv")[0].word == "Polish"  # the readable list still saves
+
+
 def _button(widget, text):
     from PySide6.QtWidgets import QPushButton
 
@@ -467,3 +480,47 @@ def test_open_page_text_has_room(window):
     assert status.height() >= status.heightForWidth(status.width())  # not squeezed
     assert title.geometry().bottom() <= status.geometry().top()  # no overlap
     window.hide()
+
+
+def test_a_plan_made_before_a_change_is_not_kept(window):
+    """Review finding 17: a pronunciation saved while the first plan was being made."""
+    from pagevoice_gui.produce import _Planned
+
+    open_book(window, PDF)
+    page = window.produce_page
+    plan = page._planner()
+    planned = plan(lambda _msg: None)  # made with the settings of that moment
+    page.plan_changed()  # e.g. a pronunciation was saved meanwhile
+    page._keep_plan(planned)
+    assert page.renderer is None  # the next render or export plans again
+    page._keep_plan(_Planned(planned.renderer, page._generation))
+    assert page.renderer is planned.renderer
+
+
+def test_pronunciations_are_locked_while_work_runs(window):
+    open_book(window, PDF)
+    page = window.produce_page
+    page.pause.set()
+    page.start_render()
+    page.pause.set()
+    wait_until(lambda: page.renderer is not None)
+    assert not page.pronunciations.isEnabled()
+    assert not window.pronunciations_action.isEnabled()
+    page.stop_work()
+    wait_until(lambda: not page.busy)
+    assert page.pronunciations.isEnabled() and window.pronunciations_action.isEnabled()
+
+
+def test_existing_m4b_needs_a_yes(window, monkeypatch, tmp_path):
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: asked.append(a[2]) or QMessageBox.No
+    )
+    open_book(window, PDF)
+    page = window.produce_page
+    bought = tmp_path / "Dune.m4b"
+    bought.write_bytes(b"bought")
+    page.target.setText(str(bought))
+    page.start_export()
+    assert asked and "already exists" in asked[0]
+    assert not page.busy and bought.read_bytes() == b"bought"

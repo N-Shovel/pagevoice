@@ -28,6 +28,37 @@ ALLOW = re.compile(
     r"unlicense|zlib|\bhpnd\b|cc0|public domain|bsl-1\.0|boost software",
     re.IGNORECASE,
 )
+# GPL version 2 *only* can't be combined with a GPL-3.0 program. "or later" is fine.
+GPL2_ONLY = re.compile(
+    r"gpl-?2(\.0)?-only|gplv2(?!\+)|\bv2 \(gplv2\)|general public license,? v(ersion )?2\b",
+    re.IGNORECASE,
+)
+OR_LATER = re.compile(r"or[- ]later|\+|v2 or later", re.IGNORECASE)
+GPL2_ONLY_WARNING = "GPL-2.0-only can't be combined with GPL-3.0"
+
+
+def verdict(license_: str) -> str:
+    """'ok', 'deny' or 'unknown' for one package's license text.
+
+    "A OR B" offers a choice: the package is fine if any one alternative is."""
+    if DENY.search(license_):
+        return "deny"
+    choices = [c.strip() for c in re.split(r"\s+OR\s+|;", license_) if c.strip()]
+    results = []
+    for choice in choices or [license_]:
+        if GPL2_ONLY.search(choice) and not OR_LATER.search(choice):
+            results.append("gpl2-only")
+        elif ALLOW.search(choice):
+            results.append("ok")
+        else:
+            results.append("unknown")
+    if "ok" in results:
+        return "ok"
+    if all(r == "gpl2-only" for r in results):
+        return "deny"
+    return "unknown"
+
+
 # Packages whose metadata is missing or misleading, checked by hand. Every entry here
 # must also have a row in the dependency log in docs/DECISIONS.md.
 REVIEWED: dict[str, str] = {
@@ -58,9 +89,11 @@ def main() -> int:
         key = name.lower()
         if key in SELF or key in REVIEWED:
             continue
-        if DENY.search(license_):
-            problems.append(f"  NOT ALLOWED  {name} {version}: {license_}")
-        elif not ALLOW.search(license_):
+        result = verdict(license_)
+        if result == "deny":
+            why = f" ({GPL2_ONLY_WARNING})" if GPL2_ONLY.search(license_) else ""
+            problems.append(f"  NOT ALLOWED  {name} {version}: {license_}{why}")
+        elif result == "unknown":
             problems.append(
                 f"  UNKNOWN      {name} {version}: {license_ or '(no license metadata)'}"
             )

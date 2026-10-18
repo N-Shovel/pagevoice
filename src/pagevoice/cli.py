@@ -135,7 +135,7 @@ def cmd_render(args) -> int:
 
 
 def cmd_export(args) -> int:
-    from pagevoice.export.audiobook import Metadata, export_m4b, export_mp3
+    from pagevoice.export.audiobook import Metadata, TargetExists, export_m4b, export_mp3
     from pagevoice.export.ffmpeg import Cancelled, FfmpegError
 
     rendered = _render(args)
@@ -157,12 +157,17 @@ def cmd_export(args) -> int:
     if problem := meta.cover_problem():
         print(f"  {problem}")
     stop = threading.Event()
-    options = dict(meta=meta, progress=progress, stop=stop, clear_cache=not args.keep_cache)
+    # With --chapters only part of the book is exported: keep the rest of its audio.
+    clear = not args.keep_cache and not args.chapters
+    options = dict(meta=meta, progress=progress, stop=stop, clear_cache=clear)
     try:
         if args.format == "mp3":
             written = export_mp3(renderer, Path(args.out), **options)
         else:
-            written = [export_m4b(renderer, Path(args.out), **options)]
+            written = [export_m4b(renderer, Path(args.out), overwrite=args.overwrite, **options)]
+    except TargetExists as exc:
+        print(f"\n{exc} Add --overwrite to replace it.", file=sys.stderr)
+        return 2
     except FfmpegError as exc:
         print(f"\n{exc}", file=sys.stderr)
         return 2
@@ -184,7 +189,7 @@ def cmd_export(args) -> int:
     print()
     for path in written:
         print(f"  {path}")
-    if not args.keep_cache:
+    if clear:
         print("  The book's render cache was cleared. Use --keep-cache to keep it for edits.")
     return 0
 
@@ -224,6 +229,11 @@ def main(argv: list[str] | None = None) -> int:
     export = sub.add_parser("export", help="render a book and write the audiobook")
     export.add_argument("--out", required=True, help="the .m4b file, or a folder for MP3s")
     export.add_argument("--format", default="m4b", choices=["m4b", "mp3"])
+    export.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="replace the .m4b if it already exists",
+    )
     export.add_argument(
         "--keep-cache",
         action="store_true",
