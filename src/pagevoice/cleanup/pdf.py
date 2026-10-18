@@ -364,7 +364,9 @@ class _Builder:
             tails = _WORD.findall(tail_text)
             if heads and tails and should_rejoin(heads[-1], tails[0], self.counts):
                 last.text = head_text[:-1]
-                index = self.current.index(last)
+                # By identity: Span is a dataclass, so .index() would find the first span
+                # with the same text, maybe an earlier "word" on the line.
+                index = next(i for i, s in enumerate(self.current) if s is last)
                 self.current.insert(index + 1, Span(head_text[-1], Reason.HYPHEN, last.location))
             else:
                 last.text = head_text

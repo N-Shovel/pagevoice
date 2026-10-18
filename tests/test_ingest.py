@@ -693,3 +693,27 @@ def test_captions_need_a_caption_shape(text, caption):
     from pagevoice.cleanup.en import is_caption
 
     assert is_caption(text) is caption
+
+
+def test_restored_hyphen_goes_back_after_the_right_word(tmp_path):
+    """Review finding 23: restoring the hyphen of "word-/less" put it after the first
+    "word" on the line, because spans were found by equal text."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    from pagevoice.edit import set_restored
+
+    path = tmp_path / "hyphen.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    pdf.setFont("Helvetica", 11)
+    y = A4[1] - 100
+    for line in ["It was a word and only a word and then a word-", "less silence fell."]:
+        pdf.drawString(72, y, line)
+        y -= 15
+    pdf.save()
+    book = read_book(path)
+    paragraph = next(p for c in book.chapters for p in c.paragraphs if "silence" in p.text)
+    assert paragraph.text == "It was a word and only a word and then a wordless silence fell."
+    hyphen = next(s for s in paragraph.spans if s.reason == Reason.HYPHEN)
+    set_restored(hyphen, True)
+    assert paragraph.text == "It was a word and only a word and then a word-less silence fell."
