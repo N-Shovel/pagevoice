@@ -95,6 +95,7 @@ class ProducePage(QWidget):
     pronunciations_clicked = Signal()
     busy_changed = Signal(bool)  # the main window locks review edits while work runs
     notes_setting_changed = Signal()
+    audio_freed = Signal()  # the Listen bar stops: its audio is about to go
 
     def __init__(
         self,
@@ -485,8 +486,45 @@ class ProducePage(QWidget):
         self.export_status.setText(self.tr("Done: %1").replace("%1", str(where)))
         self.free_button.show()
 
+    def renderer_for_listening(
+        self, on_ready: Callable[[Renderer], None], on_failed: Callable[[str], None]
+    ) -> None:
+        """The render plan the Listen bar plays from: the current one, or a new one made
+        on a worker (it reads the cache; nothing is rendered)."""
+        if self.renderer is not None:
+            on_ready(self.renderer)
+            return
+        if self.session is None:
+            on_failed(self.tr("Open a book first."))
+            return
+        plan = self._planner()
+
+        def done(planned: _Planned) -> None:
+            self._keep_plan(planned)
+            if planned.done == 0:
+                on_failed(self.tr("Nothing is rendered yet. Press Render first."))
+            else:
+                on_ready(planned.renderer)
+
+        def failed(exc: BaseException) -> None:
+            if isinstance(exc, _NeedsDownload):
+                on_failed(self.tr("Nothing is rendered yet. Press Render first."))
+            elif isinstance(exc, VoiceUnavailable):
+                on_failed(str(exc))
+            else:
+                log.error("Preparing to listen failed", exc_info=exc)
+                on_failed(self.tr("Listening couldn't start. Details are in the log."))
+
+        run_task(lambda _report: plan(lambda _msg: None), on_done=done, on_failed=failed)
+
+    @property
+    def rendering(self) -> bool:
+        """For the Listen bar's playback thread: wait for paragraphs still to come."""
+        return self._busy and self._rendering
+
     def free_cache(self) -> None:
         """Free the book's rendered audio (D26): a later export renders it again."""
+        self.audio_freed.emit()
         cache, book_id = self.cache, self.session.book_id
         self.free_button.setEnabled(False)
 

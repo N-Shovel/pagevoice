@@ -63,6 +63,16 @@ class Item:
     spoken: str  # what goes to the G2P: normalized, pronunciation applied
     key: str
     heading: bool
+    position: int = 0  # where it sits in the chapter: paragraph index, notes after the body
+
+
+@dataclass(frozen=True)
+class Segment:
+    """One paragraph's place in a chapter's audio, for playback (no audio loaded)."""
+
+    item: Item
+    frames: int | None  # None: not rendered yet
+    pause: int  # frames of silence after it
 
 
 @dataclass
@@ -115,10 +125,11 @@ class Renderer:
         g2p = self.voice.g2p_name  # reads package metadata: once, not per paragraph
         items = []
         for c, chapter in enumerate(self.book.chapters):
-            paragraphs = [p for p in chapter.paragraphs if p.text]
+            body = len(chapter.paragraphs)
+            paragraphs = [(n, p) for n, p in enumerate(chapter.paragraphs) if p.text]
             if not self.settings.drop_notes:
-                paragraphs += [p for p in chapter.notes if p.text]
-            for i, paragraph in enumerate(paragraphs):
+                paragraphs += [(body + n, p) for n, p in enumerate(chapter.notes) if p.text]
+            for i, (position, paragraph) in enumerate(paragraphs):
                 spoken, used = spoken_text(paragraph.text, self.pronunciations, normalize)
                 parts = KeyParts(
                     text=spoken,
@@ -131,9 +142,8 @@ class Renderer:
                     g2p=g2p,
                     language=self.book.language,
                 )
-                items.append(
-                    Item(c, i, paragraph.text, spoken, parts.key(), paragraph.kind == "heading")
-                )
+                heading = paragraph.kind == "heading"
+                items.append(Item(c, i, paragraph.text, spoken, parts.key(), heading, position))
         self.cache.remember(self.book_id, [item.key for item in items])
         return items
 
@@ -196,6 +206,25 @@ class Renderer:
                 )
         self.cache.trim(protect={item.key for item in self.items})
         return result
+
+    def _pause(self, item: Item) -> int:
+        seconds = self.settings.heading_pause if item.heading else self.settings.paragraph_pause
+        return int(seconds * SAMPLE_RATE)
+
+    def timeline(self, chapter: int) -> list[Segment]:
+        """The chapter as playback sees it: each paragraph's length (read from the cache
+        file's header, no audio loaded) and the pause after it, in reading order."""
+        return [
+            Segment(item, self.cache.frames(item.key), self._pause(item))
+            for item in self.items
+            if item.chapter == chapter
+        ]
+
+    def first_at(self, chapter: int, position: int) -> int:
+        """Index in timeline(chapter) of the first paragraph at or after a paragraph of
+        the book (e.g. one right-clicked in review); 0 if there's none."""
+        segments = [i for i in self.items if i.chapter == chapter]
+        return next((n for n, item in enumerate(segments) if item.position >= position), 0)
 
     def chapter_audio(self, chapter: int) -> np.ndarray:
         """A chapter's audio from the cache, with pauses. Every paragraph must be rendered."""

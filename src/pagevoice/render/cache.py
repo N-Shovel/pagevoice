@@ -85,6 +85,13 @@ class RenderCache:
         os.utime(path)  # recently used: evicted last
         return audio
 
+    def frames(self, key: str) -> int | None:
+        """Length of a cached paragraph in samples, from the file header; None if absent."""
+        try:
+            return soundfile.info(str(self.path(key))).frames
+        except (RuntimeError, soundfile.LibsndfileError):
+            return None
+
     def put(self, key: str, audio: np.ndarray, sample_rate: int) -> None:
         path = self.path(key)
         path.parent.mkdir(parents=True, exist_ok=True)

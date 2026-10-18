@@ -42,6 +42,7 @@ def read_notes_setting() -> bool:
 class ReviewPage(QWidget):
     continue_clicked = Signal()
     clean_again_clicked = Signal()
+    listen_from = Signal(int, int)  # chapter, paragraph of the book
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -310,7 +311,7 @@ class ReviewPage(QWidget):
     def _default_hint(self) -> None:
         self.hint.setText(self.tr(
             "Dimmed text won't be read. Click it to bring it back; click again to remove it. "
-            "Right-click a paragraph to start a new chapter there."
+            "Right-click a paragraph to listen from there or start a new chapter."
         ))  # fmt: skip
 
     def _hovered(self, url: QUrl) -> None:
@@ -333,9 +334,14 @@ class ReviewPage(QWidget):
         block = self.text.cursorForPosition(pos).blockNumber()
         paragraph = self._blocks[block] if 0 <= block < len(self._blocks) else None
         menu = QMenu(self)
+        listen = menu.addAction(self.tr("Listen from here"))
+        listen.setEnabled(paragraph is not None)
         action = menu.addAction(self.tr("Start a new chapter here"))
         action.setEnabled(bool(paragraph))  # not the first paragraph, not a note
-        if menu.exec(self.text.mapToGlobal(pos)) is action and paragraph:
+        chosen = menu.exec(self.text.mapToGlobal(pos))
+        if chosen is listen and paragraph is not None:
+            self.listen_from.emit(self.chapters.currentRow(), paragraph)
+        elif chosen is action and paragraph:
             self.split(paragraph)
 
     def split(self, paragraph: int, title: str | None = None) -> None:

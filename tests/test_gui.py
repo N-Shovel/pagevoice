@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 pytest.importorskip("PySide6", reason="the gui extra isn't installed")
@@ -27,6 +28,7 @@ from pagevoice_gui.main_window import OPEN, PRODUCE, REVIEW, MainWindow  # noqa:
 from pagevoice_gui.produce import duration_text, voice_label  # noqa: E402
 from pagevoice_gui.pronunciations import PronunciationDialog  # noqa: E402
 from tests.test_export import FakeRun  # noqa: E402
+from tests.test_playback import FakeStream  # noqa: E402
 from tests.test_render import FakeVoice  # noqa: E402
 
 CORPUS = Path(__file__).parent / "corpus" / "public"
@@ -75,7 +77,10 @@ def window(env, tmp_path):
         voices.append(voice)
         return voice
 
-    w = MainWindow(factory, ["af_heart", "bm_george"], RenderCache(tmp_path / "cache"))
+    w = MainWindow(
+        factory, ["af_heart", "bm_george"], RenderCache(tmp_path / "cache"),
+        stream_factory=lambda: FakeStream(delay=0.002),
+    )  # fmt: skip
     w.made_voices = voices
     yield w
     w.produce_page.stop_work()
@@ -524,3 +529,69 @@ def test_existing_m4b_needs_a_yes(window, monkeypatch, tmp_path):
     page.start_export()
     assert asked and "already exists" in asked[0]
     assert not page.busy and bought.read_bytes() == b"bought"
+
+
+def _render_all(window):
+    page = window.produce_page
+    page.start_render()
+    wait_until(lambda: "Everything is rendered" in page.status.text(), 60)
+
+
+def test_listen_plays_a_rendered_chapter(window):
+    open_book(window, PDF)
+    bar = window.listen_bar
+    assert bar.isVisibleTo(window) and bar.chapter.count() == len(window.session.book.chapters)
+    _render_all(window)
+    bar.chapter.setCurrentIndex(2)
+    _button(bar, "▶ Play").click()
+    wait_until(lambda: bar.player is not None and "Paragraph" in bar.reading.text())
+    assert bar.stop_button.isEnabled() and bar.slider.isEnabled()
+    bar.toggle()  # pause
+    assert bar.player.paused and bar.play_button.text() == "▶ Play"
+    bar.toggle()  # resume
+    wait_until(lambda: "End of the chapter" in bar.reading.text(), 30)
+    assert bar.player is None and not bar.stop_button.isEnabled()
+
+
+def test_listen_from_a_paragraph_in_review(window):
+    open_book(window, PDF)
+    _render_all(window)
+    chapter = window.session.book.chapters[2]
+    paragraph = next(i for i, p in enumerate(chapter.paragraphs) if i > 3 and p.text)
+    window.review_page.listen_from.emit(2, paragraph)
+    wait_until(lambda: window.listen_bar.player is not None)
+    player = window.listen_bar.player
+    assert player.timeline[player._segment].item.position >= paragraph
+    window.listen_bar.stop()
+    assert window.listen_bar.player is None
+
+
+def test_listen_before_rendering_says_so(window):
+    open_book(window, PDF)
+    window.listen_bar.toggle()
+    wait_until(lambda: "Press Render first" in window.listen_bar.reading.text())
+    assert window.listen_bar.player is None
+
+
+def test_listen_stops_where_rendering_stopped(window):
+    open_book(window, PDF)
+    page = window.produce_page
+    page.pause.set()
+    page.start_render()
+    page.pause.set()
+    wait_until(lambda: page.renderer is not None)
+    page.stop_work()  # nothing rendered beyond what had finished
+    wait_until(lambda: not page.busy)
+    first = next(i for i in page.renderer.items if i.chapter == 2)  # a long chapter
+    page.cache.put(first.key, np.zeros(2400, dtype=np.float32), 24000)  # just the first
+    window.listen_bar.play_from(first.chapter, None)
+    wait_until(lambda: "as far as this chapter is rendered" in window.listen_bar.reading.text(), 30)
+
+
+def test_freeing_the_audio_stops_listening(window, monkeypatch):
+    open_book(window, PDF)
+    _render_all(window)
+    window.listen_bar.play_from(2, None)
+    wait_until(lambda: window.listen_bar.player is not None)
+    window.produce_page.free_cache()
+    assert window.listen_bar.player is None

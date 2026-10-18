@@ -4,7 +4,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 
 - **Last updated:** 2026-10-19
 - **Milestone:** after M4: the external review's fixes, then the Listen feature. M0–M4 are done and merged (PRs #8, #9). M5 (installer) comes last.
-- **Branch:** review-safety-fixes
+- **Branch:** listen-mode (built on review-safety-fixes)
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
   1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
@@ -58,7 +58,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 
 ## In progress
 - **PR #11** (`gui-button-fixes`): Pronunciations, Back to review and Continue crashed when clicked; the open page's text was squeezed. Found by the owner. CI passed; waiting to be merged.
-- **Piece 1 on `review-safety-fixes`** (it includes #11 through a merge, so either can merge first):
+- **Piece 1 = PR #12** (`review-safety-fixes`) (it includes #11 through a merge, so either can merge first):
   - Findings fixed:
     - 1: MP3 export only removes files it wrote for the same book (record file `.pagevoice-export.json`)
     - 2: pronunciation lists are read in Excel's encodings and never saved over when unreadable
@@ -70,12 +70,20 @@ Claude Code keeps this file current. It updates it after every finished step and
     - 21: CLI `--chapters` keeps the cache
     - the license checker rejects GPL-2.0-only
   - Not done: quitting during a render leaves the process alive until the current paragraph ends. Low priority.
-- **Fast tests:** 280 passed, 1 skipped.
+- **Piece 2 = Listen, on `listen-mode`** (PR after #12; see D36):
+  - The engine's `render/playback.py` (timeline and player) and the GUI's Listen bar.
+  - Review's right-click has "Listen from here".
+  - sounddevice is in the `gui` extra, and CI installs libportaudio2.
+- **Fast tests:** 293 passed, 1 skipped.
 
 ## Next step
-1. Open the piece 1 PR. Then piece 2 (Listen) on a new branch from `main`, after checking sounddevice's license with the add-dependency skill. Record the decision as D36.
-2. Then piece 3: findings 5–15, 18, 19, 22, 23, the rule gaps (SVG `<title>`, `txt.py` importing `cleanup.en`), and the test that can't fail. Cleanup fixes go through the add-cleanup-rule skill. Expected spoken forms are human-owned, so new ones go into `sentences.proposed.tsv`.
-3. M5 last.
+1. Piece 3 on a new branch: the review's reading and cleanup findings:
+   - findings 5–15, 18, 19, 22, 23
+   - the rule gaps: SVG `<title>`, and `txt.py` importing `cleanup.en`
+   - the test that can't fail (`test_chapter_audio_joins_paragraphs_with_pauses`)
+
+   Cleanup fixes go through the add-cleanup-rule skill. Expected spoken forms are human-owned, so new ones go into `sentences.proposed.tsv`.
+2. M5 last.
 
 ## Waiting on the owner
 - **Model manifest:**
