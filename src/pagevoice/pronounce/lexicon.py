@@ -42,7 +42,9 @@ class Entry:
         return (self.word if self.case_sensitive else self.word.lower(), self.case_sensitive)
 
     def pattern(self) -> re.Pattern:
-        body = re.escape(self.word)
+        # An apostrophe in the entry matches either kind: books use ’ ("’Tis", "D’Artagnan")
+        # and lists are typed with '.
+        body = re.sub(r"['’]", "['’]", re.escape(self.word))
         if self.whole_word:
             # Not inside a word. "Hermione's", "Hermione'll" and a quoted 'Hermione' still
             # match; "Brien" doesn't match inside "O'Brien".

@@ -1,0 +1,18 @@
+# PROPOSED rows for tests/voice/sentences.tsv (the human-owned sentence list).
+# Claude can't edit sentences.tsv. These come from the external review of 2026-10-16 (findings 8,
+# 9, 18, 19). The normalizer already reads them this way and tests/test_normalize.py checks it.
+# To accept: check each "spoken" column is how you'd want it said, then copy the rows you
+# agree with into sentences.tsv. Same columns: id, category, text, spoken.
+id	category	text	spoken
+num-11	numbers	After 9/11 everything changed.	After nine eleven everything changed.
+num-12	numbers	The shop is open 24/7.	The shop is open twenty-four seven.
+num-13	numbers	It was a 50/50 chance.	It was a fifty fifty chance.
+num-14	numbers	The army had 1500 soldiers.	The army had one thousand five hundred soldiers.
+date-05	dates	William landed in 1066.	William landed in ten sixty-six.
+date-06	dates	The colony was founded in 2312.	The colony was founded in twenty-three twelve.
+abbr-08	abbreviations	She lived on Baker St. The house was old.	She lived on Baker Street. The house was old.
+abbr-09	abbreviations	It was 5 p.m. The bell rang.	It was five p m. The bell rang.
+abbr-10	abbreviations	He bought apples, pears, etc. Then he left.	He bought apples, pears, et cetera. Then he left.
+roman-09	roman_numerals	We flew to Washington DC last spring.	We flew to Washington D C last spring.
+roman-10	roman_numerals	There was no mix-up about it.
+roman-11	roman_numerals	Pope John XXIII opened the council.	Pope John the Twenty-third opened the council.

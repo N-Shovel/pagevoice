@@ -126,3 +126,11 @@ def test_lists_saved_by_excel_are_read(tmp_path, encoding):
     assert [(e.word, e.sounds_like) for e in load(path)] == [
         ("Siobhán", "shi-vawn"), ("Niamh", "neev")
     ]  # fmt: skip
+
+
+def test_entries_match_either_apostrophe():
+    """Review finding 10: lists are typed with ', books print ’."""
+    for word, text in [("'Tis", "’Tis the season."), ("D'Artagnan", "D’Artagnan drew."),
+                       ("D’Artagnan", "D'Artagnan drew.")]:  # fmt: skip
+        applied = apply(text, [Entry(word, "x")])
+        assert applied.fill(applied.text).startswith("x ")
