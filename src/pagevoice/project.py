@@ -90,11 +90,15 @@ def from_dict(data: dict) -> Book:
 
 def save(book: Book, book_id: str, *, source: Path | None = None) -> Path:
     """Save the book's review state (atomically)."""
+    return write(to_dict(book), book_id, source=source)
+
+
+def write(data: dict, book_id: str, *, source: Path | None = None) -> Path:
+    """Save review state already turned into data by to_dict() (atomically)."""
     folder = projects_dir()
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{book_id}.json"
-    data = to_dict(book)
-    data["source"] = str(source) if source else None
+    data = {**data, "source": str(source) if source else None}
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     _replace(tmp, path)

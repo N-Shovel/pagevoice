@@ -27,12 +27,28 @@ from pagevoice.document import Book, Chapter, Location, PageFlag, Paragraph, Rea
 from pagevoice.ingest.pdf import Extracted, Line, Page
 
 STRIP = 0.2  # running heads and footers sit in the top or bottom fifth of the page
+MARK_SLACK = 6.0  # points: a bookmark may point a little below its heading's top
 _ROMAN = re.compile(r"^[ivxlcdm]+$", re.I)
 _PAGE_NUMBER = re.compile(r"^[-–—(\[]?\s*(\d{1,4}|[ivxlcdm]{1,8})\s*[-–—)\]]?$", re.I)
-# "12 THE WISDOM OF LIFE" or "DIVISION OF THE SUBJECT 5"
+# "12 THE WISDOM OF LIFE", "DIVISION OF THE SUBJECT 5", "X SCHOPENHAUER", "xii PREFACE"
 _NUMBERED_HEAD = re.compile(
     r"^(\d{1,4}|[ivxlc]{1,6})\s+\D.*$|^.*\D\s+(\d{1,4}|[ivxlc]{1,6})$", re.I
 )
+
+
+def _numbered_head(text: str) -> bool:
+    """A running head's shape. Its Roman numeral is all lower or all upper case, and not
+    a lone "I" (the pronoun: "I never saw him again"), so "Vic" or "Lili" don't count."""
+    match = _NUMBERED_HEAD.match(text)
+    if not match:
+        return False
+    number = match.group(1) or match.group(2)
+    if number.isalpha():
+        return number != "I" and (number.islower() or number.isupper())
+    return True
+
+
+NUMBERED_HEAD_SHARE = 0.3  # the shape must top at least this share of pages (and 3)
 _MARKER = re.compile(r"^[\d*†‡§¶]{1,3}[.)]?$")
 _NOTE_START = re.compile(r"^[\d*†‡§¶]{1,3}[.)]?\s")
 _SMALL_CAPS_FONT = re.compile(r"smallcaps|small-caps|[-+,]sc\b|caps", re.I)
@@ -59,6 +75,8 @@ class Layout:
     line_gap: float
     roles: dict[int, Role] = field(default_factory=dict)  # id(line) -> role
     multi_column: set[int] = field(default_factory=set)  # page numbers
+    word_counts: Counter = field(default_factory=Counter)  # the book's words, lowercased
+    one_letter_words: frozenset = frozenset()  # from the language module
 
 
 def _normal(text: str) -> str:
@@ -132,12 +150,19 @@ def _find_headers_footers(pages: list[Page], layout: Layout, rules) -> None:
     for top, reason in ((True, Reason.HEADER), (False, Reason.FOOTER)):
         repeats: Counter[str] = Counter()
         slots: Counter[int] = Counter()
+        numbered = 0  # pages topped by a "number + text" line standing apart
         for page in text_pages:
             repeats.update({_normal(line.text) for line in _edge_lines(page, top)})
             for line in _edge_lines(page, top):
                 if _isolated(page, line, layout.line_gap, top):
                     slots[_slot(page, line)] += 1
+            edge = _edge_lines(page, top)[:1]
+            if top and edge and _isolated(page, edge[0], layout.line_gap, top):
+                numbered += _numbered_head(edge[0].text.strip())
         need = max(3, 0.4 * len(text_pages))
+        # One page starting "I never saw him" or ending "…came to 1914" isn't a running
+        # head: the shape has to recur, as real numbered heads do.
+        numbered_heads = numbered >= max(3, NUMBERED_HEAD_SHARE * len(text_pages))
         slot_need = max(3, 0.5 * len(text_pages))
         for page in text_pages:
             for line in _edge_lines(page, top):
@@ -151,7 +176,7 @@ def _find_headers_footers(pages: list[Page], layout: Layout, rules) -> None:
                 slot = _slot(page, line)
                 in_slot = any(slots[s] >= slot_need for s in (slot - 1, slot, slot + 1))
                 if (
-                    (top and isolated and _NUMBERED_HEAD.match(text))
+                    (top and isolated and numbered_heads and _numbered_head(text))
                     or repeats[_normal(text)] >= need
                     or (in_slot and isolated)
                 ):
@@ -234,6 +259,7 @@ def _multi_column(page: Page, layout: Layout) -> bool:
 def analyse(pages: list[Page], rules) -> Layout:
     body = _body_size(pages)
     layout = Layout(body_size=body, line_gap=_line_gap(pages, body))
+    layout.one_letter_words = getattr(rules, "ONE_LETTER_WORDS", frozenset())
     _find_headers_footers(pages, layout, rules)
     for page in pages:
         _find_footnotes(page, layout)
@@ -269,7 +295,7 @@ def _line_spans(line: Line, layout: Layout) -> list[Span]:
             continue
         # Drop cap: a single big capital followed by the rest of its word ("T he").
         drop_cap = index == 0 and len(text) == 1 and text.isupper() and word.size >= 1.6 * size
-        if drop_cap and len(words) > 1:
+        if drop_cap and len(words) > 1 and _joins_drop_cap(text, words[1].text, layout):
             words[1].space_before = False
         # Small caps: shrunken capitals. "I" + "T" -> "It", "MR." -> "Mr."
         letters = any(c.isalpha() for c in text)
@@ -279,6 +305,17 @@ def _line_spans(line: Line, layout: Layout) -> list[Span]:
             text = text.lower() if joined else text.capitalize()
         spans.append(Span(gap + text, location=location))
     return spans
+
+
+def _joins_drop_cap(cap: str, rest: str, layout: Layout) -> bool:
+    """Join a drop cap to the next word ("T" + "he"), unless the capital is a word on its
+    own and so is the next word ("I" + "was", "A" + "long"). Evidence from the book, like
+    the hyphen rule (D12): "I" + "t" joins, because "t" never stands alone."""
+    if cap not in layout.one_letter_words:
+        return True
+    tail = _WORD.match(rest)
+    # Counts include this line itself, so "elsewhere" means more than once.
+    return not (tail and layout.word_counts.get(tail.group(0).lower(), 0) > 1)
 
 
 def _text_of(spans: list[Span]) -> str:
@@ -328,7 +365,9 @@ class _Builder:
             tails = _WORD.findall(tail_text)
             if heads and tails and should_rejoin(heads[-1], tails[0], self.counts):
                 last.text = head_text[:-1]
-                index = self.current.index(last)
+                # By identity: Span is a dataclass, so .index() would find the first span
+                # with the same text, maybe an earlier "word" on the line.
+                index = next(i for i, s in enumerate(self.current) if s is last)
                 self.current.insert(index + 1, Span(head_text[-1], Reason.HYPHEN, last.location))
             else:
                 last.text = head_text
@@ -365,6 +404,7 @@ def build_book(extracted: Extracted, *, fallback_title: str, language: str | Non
             book.flags.append(PageFlag(page.number, "multi_column", MULTI_COLUMN_MESSAGE))
 
     counts = word_counts(line.text for page in pages for line in page.lines)
+    layout.word_counts = counts
     builder = _Builder(counts)
     note_builder = _Builder(counts)  # footnotes, joined like body text
     prev: Line | None = None
@@ -457,20 +497,25 @@ def _chapters(
 ) -> list[Chapter]:
     front: list[Paragraph] = []
     chapters: list[Chapter] = []
+    # (page, top, title): a bookmark that points partway down a page starts its chapter
+    # there, not at the top of the page (top 0 when it names the page as a whole).
     bookmarks = sorted(
-        ((page, name) for name, page in extracted.bookmarks), key=lambda mark: mark[0]
+        ((page, (top or 0.0) - MARK_SLACK, name) for name, page, top in extracted.bookmarks),
+        key=lambda mark: mark[:2],
     )
     use_bookmarks = len(bookmarks) >= 2
     marks = iter(bookmarks)
     next_mark = next(marks, None)
     current: Chapter | None = None
+    starts: dict[int, tuple[int, float]] = {}  # id(chapter) -> where it begins
 
     for paragraph in paragraphs:
-        page = _first_page(paragraph)
+        place = _first_place(paragraph)
         heading = paragraph.kind == "heading" and paragraph.text
         if use_bookmarks:
-            while next_mark is not None and page is not None and page >= next_mark[0]:
-                current = Chapter(title=next_mark[1], start_page=next_mark[0])
+            while next_mark is not None and place is not None and place >= next_mark[:2]:
+                current = Chapter(title=next_mark[2], start_page=next_mark[0])
+                starts[id(current)] = next_mark[:2]
                 chapters.append(current)
                 next_mark = next(marks, None)
         elif heading and rules.is_chapter_heading(paragraph.text):
@@ -480,7 +525,7 @@ def _chapters(
             if only_headings:
                 current.title += " " + paragraph.text  # "BOOK II" then "CHAPTER I"
             else:
-                current = Chapter(title=paragraph.text, start_page=page)
+                current = Chapter(title=paragraph.text, start_page=place[0] if place else None)
                 chapters.append(current)
         elif (
             heading and current is not None and all(p.kind == "heading" for p in current.paragraphs)
@@ -493,16 +538,27 @@ def _chapters(
     else:
         result = [Chapter(title=title, paragraphs=front)]
 
-    # Footnotes go to the end of the chapter their page belongs to (D11).
+    # Footnotes go to the end of the chapter their place on the page belongs to (D11).
     for note in notes:
-        page = _first_page(note) or 0
+        place = _first_place(note) or (0, 0.0)
         owner = result[0]
         for chapter in result:
-            start = chapter.start_page or _first_page_of(chapter)
-            if start is not None and start <= page:
+            start = starts.get(id(chapter))
+            if start is None:
+                page = chapter.start_page or _first_page_of(chapter)
+                start = None if page is None else (page, -MARK_SLACK)
+            if start is not None and start <= place:
                 owner = chapter
         owner.notes.append(note)
     return result
+
+
+def _first_place(paragraph: Paragraph) -> tuple[int, float] | None:
+    """(page, distance from the top) where a paragraph starts."""
+    span = next((s for s in paragraph.spans if s.location.page), None)
+    if span is None:
+        return None
+    return (span.location.page, span.location.top or 0.0)
 
 
 def _first_page_of(chapter: Chapter) -> int | None:

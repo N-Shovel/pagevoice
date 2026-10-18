@@ -126,3 +126,28 @@ def test_lists_saved_by_excel_are_read(tmp_path, encoding):
     assert [(e.word, e.sounds_like) for e in load(path)] == [
         ("Siobhán", "shi-vawn"), ("Niamh", "neev")
     ]  # fmt: skip
+
+
+def test_entries_match_either_apostrophe():
+    """Review finding 10: lists are typed with ', books print ’."""
+    for word, text in [("'Tis", "’Tis the season."), ("D'Artagnan", "D’Artagnan drew."),
+                       ("D’Artagnan", "D'Artagnan drew.")]:  # fmt: skip
+        applied = apply(text, [Entry(word, "x")])
+        assert applied.fill(applied.text).startswith("x ")
+
+
+def test_comments_before_the_header_and_on_save(tmp_path):
+    """Review finding 22: the header after a comment became an entry; Save lost comments."""
+    from pagevoice.pronounce.lexicon import save
+
+    path = tmp_path / "wot.tsv"
+    path.write_text(
+        "# Names from the Wheel of Time\nword\tsounds_like\nAes Sedai\teye-ess seh-dye\n",
+        encoding="utf-8",
+    )
+    entries = load(path)
+    assert [e.word for e in entries] == ["Aes Sedai"]
+    save(path, entries + [Entry("Nynaeve", "nye-neev")])
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("# Names from the Wheel of Time\n")
+    assert [e.word for e in load(path)] == ["Aes Sedai", "Nynaeve"]

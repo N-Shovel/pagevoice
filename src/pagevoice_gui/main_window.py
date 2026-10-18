@@ -287,7 +287,7 @@ class MainWindow(QMainWindow):
         book_id, source = session.book_id, session.source
 
         def forget(_report) -> None:
-            with session.lock:  # after any save still in flight
+            with session.saving:  # after any save still in flight
                 project.forget(book_id)
 
         tasks.run_task(forget, on_done=lambda _r: self.load_book(source))

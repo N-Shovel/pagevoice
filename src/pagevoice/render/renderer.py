@@ -12,8 +12,10 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
+import soundfile
 
 from pagevoice.document import Book
 from pagevoice.normalize import normalizer_for
@@ -225,6 +227,31 @@ class Renderer:
         the book (e.g. one right-clicked in review); 0 if there's none."""
         segments = [i for i in self.items if i.chapter == chapter]
         return next((n for n, item in enumerate(segments) if item.position >= position), 0)
+
+    def write_chapter(self, chapter: int, path: Path, *, format: str = "FLAC") -> float:
+        """Write a chapter's audio, with pauses, to a file one paragraph at a time, so a
+        ten-hour single-chapter book needs no more memory than one paragraph. Returns its
+        length in seconds. Every paragraph must be rendered (LookupError otherwise)."""
+        items = [i for i in self.items if i.chapter == chapter]
+        if any(not self.cache.has(i.key) for i in items):
+            raise LookupError(f"Chapter {chapter + 1} isn't fully rendered yet.")
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frames = 0
+        with soundfile.SoundFile(
+            str(path), "w", SAMPLE_RATE, 1, subtype="PCM_16", format=format
+        ) as out:
+            for item in items:
+                audio = self.cache.get(item.key)
+                if audio is None:  # removed since the check (unreadable or evicted)
+                    raise LookupError(f"Chapter {chapter + 1} isn't fully rendered yet.")
+                for block in (np.clip(audio, -1.0, 1.0), np.zeros(self._pause(item), np.float32)):
+                    out.write(block)
+                    frames += len(block)
+            tail = np.zeros(int(self.settings.chapter_pause * SAMPLE_RATE), dtype=np.float32)
+            out.write(tail)
+            frames += len(tail)
+        return frames / SAMPLE_RATE
 
     def chapter_audio(self, chapter: int) -> np.ndarray:
         """A chapter's audio from the cache, with pauses. Every paragraph must be rendered."""

@@ -595,3 +595,27 @@ def test_freeing_the_audio_stops_listening(window, monkeypatch):
     wait_until(lambda: window.listen_bar.player is not None)
     window.produce_page.free_cache()
     assert window.listen_bar.player is None
+
+
+def test_edits_never_wait_for_a_save(window, monkeypatch):
+    """Review finding 11: a save held a lock for 0.5-2 s and review clicks waited."""
+    open_book(window, PDF)
+    session = window.session
+    real_to_dict, copying = project.to_dict, threading.Event()
+
+    def slow_to_dict(book):
+        copying.set()
+        time.sleep(0.5)  # a big book
+        return real_to_dict(book)
+
+    monkeypatch.setattr(project, "to_dict", slow_to_dict)
+    saver = threading.Thread(target=session.write)
+    saver.start()
+    copying.wait(5)
+    started = time.monotonic()
+    window.review_page.rename("Renamed during the save")
+    assert time.monotonic() - started < 0.2  # the click didn't wait for the save
+    saver.join(10)
+    monkeypatch.setattr(project, "to_dict", real_to_dict)
+    saved = project.load(session.book_id)
+    assert saved.chapters[0].title == "Renamed during the save"  # copied again

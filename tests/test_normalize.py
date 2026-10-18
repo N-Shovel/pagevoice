@@ -84,3 +84,36 @@ def test_lone_i_after_a_lowercase_keyword_is_the_pronoun():
 def test_us_is_spelled_out_except_in_capitals():
     assert normalize("She moved to the US in May.") == "She moved to the U S in May."
     assert normalize("LET US GO HOME") == "Let Us Go Home"
+
+
+@pytest.mark.parametrize(
+    ("text", "spoken"),
+    [
+        # Review finding 8: capitals that look like Roman numerals
+        ("We flew to Washington DC last spring.", "We flew to Washington D C last spring."),
+        ("Size XL", "Size XL"),
+        ("Jane Doe MD", "Jane Doe MD"),
+        ("There was no mix-up.", "There was no mix-up."),
+        ("Pope John XXIII spoke.", "Pope John the Twenty-third spoke."),
+        # Review finding 9: slashes that aren't fractions
+        ("After 9/11 everything changed.", "After nine eleven everything changed."),
+        ("Open 24/7", "Open twenty-four seven"),
+        ("A 50/50 chance", "A fifty fifty chance"),
+        ("7/16 of an inch", "seven sixteenths of an inch"),
+        # Review finding 18: an abbreviation that ends the sentence keeps its full stop
+        (
+            "She lived on Baker St. The house was old.",
+            "She lived on Baker Street. The house was old.",
+        ),
+        ("It was 5 p.m. The bell rang.", "It was five p m. The bell rang."),
+        ("pears, etc. Then we left.", "pears, et cetera. Then we left."),
+        ("e.g. Paris is big.", "for example Paris is big."),
+        # Review finding 19: years outside 1100-2099 with a cue word
+        ("He was born in 1066.", "He was born in ten sixty-six."),
+        ("Founded in 2312.", "Founded in twenty-three twelve."),
+        ("In 1000 the world changed.", "In one thousand the world changed."),
+        ("The army had 1500 soldiers.", "The army had one thousand five hundred soldiers."),
+    ],
+)
+def test_review_reading_cases(text, spoken):
+    assert normalize(text) == spoken

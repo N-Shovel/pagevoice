@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from pagevoice.cleanup import en as gutenberg  # PG's own header and licence are English
+from pagevoice.cleanup import gutenberg
 from pagevoice.cleanup.chapters import finish_chapters
 from pagevoice.cleanup.language import book_language, rules_for
 from pagevoice.cleanup.text import fix_characters, join_lines, split_markers, word_counts
@@ -18,7 +18,7 @@ MAX_MARKER_BLOCKS = 6  # an unclosed "[Illustration" or "[Footnote" stops after 
 
 def read_txt(path: Path, *, language: str | None = None) -> Book:
     text = fix_characters(decode(path.read_bytes()).replace("\r\n", "\n").replace("\r", "\n"))
-    fields = dict(gutenberg.GUTENBERG_FIELD.findall(text[:5000]))
+    fields = dict(gutenberg.FIELD.findall(text[:5000]))
     book = Book(
         title=fields.get("Title", path.stem).strip(),
         author=fields.get("Author", "").strip(),
@@ -29,8 +29,8 @@ def read_txt(path: Path, *, language: str | None = None) -> Book:
     blocks = [b for b in _BLANK.split(text) if b.strip()]
 
     # Project Gutenberg licence text: kept, but as removals.
-    start = next((i for i, b in enumerate(blocks) if gutenberg.GUTENBERG_START.search(b)), None)
-    end = next((i for i, b in enumerate(blocks) if gutenberg.GUTENBERG_END.search(b)), None)
+    start = next((i for i, b in enumerate(blocks) if gutenberg.START.search(b)), None)
+    end = next((i for i, b in enumerate(blocks) if gutenberg.END.search(b)), None)
     has_notes = any(rules.FOOTNOTE_BLOCK.match(b) for b in blocks)
 
     counts = word_counts(blocks)

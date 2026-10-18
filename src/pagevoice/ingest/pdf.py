@@ -112,7 +112,8 @@ class Extracted:
     title: str
     author: str
     language: str
-    bookmarks: list[tuple[str, int]]  # top-level (title, 1-based page)
+    # top-level (title, 1-based page, distance from the page top in points, if given)
+    bookmarks: list[tuple[str, int, float | None]]
 
 
 def _lines(words: list[Word], page: int) -> list[Line]:
@@ -171,6 +172,8 @@ def extract(path: Path) -> Extracted:
                 ),
                 default=0.0,
             )
+            # Text drawn twice, slightly offset ("fake bold"), would read "CChhaapptteerr".
+            raw = raw.dedupe_chars()
             words = raw.extract_words(
                 extra_attrs=["size", "fontname"],
                 keep_blank_chars=False,
@@ -212,14 +215,15 @@ def extract(path: Path) -> Extracted:
         except Exception:
             language = ""
 
-    bookmarks: list[tuple[str, int]] = []
+    bookmarks: list[tuple[str, int, float | None]] = []
     try:
         doc = pypdfium2.PdfDocument(str(path))
         for item in doc.get_toc():
             dest = item.get_dest()
             index = dest.get_index() if dest is not None else None
             if item.level == 0 and index is not None:
-                bookmarks.append((item.get_title().strip(), index + 1))
+                top = _destination_top(dest, doc[index].get_height())
+                bookmarks.append((item.get_title().strip(), index + 1, top))
         doc.close()
     except Exception:
         log.debug("No readable bookmarks", exc_info=True)
@@ -231,6 +235,25 @@ def extract(path: Path) -> Extracted:
         language=language,
         bookmarks=bookmarks,
     )
+
+
+# pypdfium2 destination view modes that say where on the page they point
+_VIEW_XYZ, _VIEW_FITH, _VIEW_FITBH = 1, 3, 7
+
+
+def _destination_top(dest, page_height: float) -> float | None:
+    """How far down its page a bookmark points (None: the page as a whole). A chapter in
+    a Word export or thesis often starts partway down a page."""
+    try:
+        mode, position = dest.get_view()
+        y = None
+        if mode == _VIEW_XYZ and len(position) >= 2:
+            y = position[1]
+        elif mode in (_VIEW_FITH, _VIEW_FITBH) and position:
+            y = position[0]
+        return None if y is None else max(0.0, page_height - float(y))
+    except Exception:  # an odd destination: fall back to the page
+        return None
 
 
 def _meta_text(value) -> str:

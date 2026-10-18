@@ -8,6 +8,7 @@ pagevoice export BOOK --out FILE.m4b     render (resuming), then write the audio
 """
 
 import argparse
+import os
 import sys
 import threading
 from collections import Counter
@@ -111,8 +112,6 @@ def _render(args):
 
 
 def cmd_render(args) -> int:
-    from pagevoice.audio import write_wav
-    from pagevoice.voice.kokoro import SAMPLE_RATE
 
     rendered = _render(args)
     if isinstance(rendered, int):
@@ -123,13 +122,15 @@ def cmd_render(args) -> int:
     incomplete = False
     for index, chapter in enumerate(book.chapters):
         target = out / f"{index + 1:03d}.wav"
+        partial = target.with_name(target.name + ".tmp")
         try:
-            audio = renderer.chapter_audio(index)
+            renderer.write_chapter(index, partial, format="WAV")  # streamed: little memory
         except LookupError as exc:  # a paragraph failed: write the other chapters anyway
+            partial.unlink(missing_ok=True)
             print(f"  skipped: {exc}", file=sys.stderr)
             incomplete = True
             continue
-        write_wav(target, audio, SAMPLE_RATE)
+        os.replace(partial, target)
         print(f"  {target}  {chapter.title[:60]}")
     return 1 if result.failed or incomplete else 0
 

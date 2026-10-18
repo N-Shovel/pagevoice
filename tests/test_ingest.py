@@ -164,7 +164,7 @@ NOTES = """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idp
 </ol></section></body></html>"""
 
 
-def make_epub(path: Path, *, encryption: str | None = None) -> Path:
+def make_epub(path: Path, *, encryption: str | None = None, one: str | None = None) -> Path:
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("mimetype", "application/epub+zip")
         z.writestr("META-INF/container.xml", CONTAINER)
@@ -172,7 +172,7 @@ def make_epub(path: Path, *, encryption: str | None = None) -> Path:
             z.writestr("META-INF/encryption.xml", encryption)
         z.writestr("OEBPS/content.opf", OPF)
         z.writestr("OEBPS/nav.xhtml", NAV)
-        z.writestr("OEBPS/text/one.xhtml", ONE)
+        z.writestr("OEBPS/text/one.xhtml", one or ONE)
         z.writestr("OEBPS/text/two.xhtml", TWO)
         z.writestr("OEBPS/text/notes.xhtml", NOTES)
         z.writestr("OEBPS/cover.jpg", b"\xff\xd8fakejpeg")
@@ -518,3 +518,243 @@ def test_pdf_pages_are_closed_as_they_are_read(monkeypatch):
     monkeypatch.setattr(Page, "extract_words", words)
     read_book(TRAPS / "trap-lantern" / "book.pdf")
     assert len(seen) > 2 and seen == list(range(len(seen)))
+
+
+ONE_MARKERS = """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>One</title></head><body>
+<h1>Chapter One</h1>
+<p>The war ended in spring.<a href="#fn3"><sup>3</sup></a> Nobody believed it.</p>
+<p>See <a href="#ch2"><sup>the</sup> next chapter</a> and chapter <a href="#ch2">2</a>.</p>
+<p><svg xmlns="http://www.w3.org/2000/svg"><title>A map of the coast</title></svg>After.</p>
+<aside id="fn3"><p>3 The treaty came later.</p></aside>
+</body></html>"""
+
+
+def test_epub_link_around_superscript_is_a_note_marker(tmp_path):
+    """Review finding 6: <a href="#fn"><sup>1</sup></a> (Calibre, many publishers)."""
+    book = read_book(make_epub(tmp_path / "m.epub", one=ONE_MARKERS))
+    first = book.chapters[0]
+    texts = [p.text for p in first.paragraphs]
+    assert "The war ended in spring. Nobody believed it." in texts
+    markers = [s for s in all_spans(book) if s.reason == Reason.FOOTNOTE_MARKER]
+    assert "3" in [s.text for s in markers]  # kept as a restorable removal
+    # Ordinary links stay read: longer text, or no superscript.
+    assert "See the next chapter and chapter 2." in texts
+
+
+def test_epub_svg_title_is_a_figure_removal(tmp_path):
+    """Rule 2: an SVG's <title> (its description) is kept as a removal, not dropped."""
+    book = read_book(make_epub(tmp_path / "s.epub", one=ONE_MARKERS))
+    figures = [s.text for s in all_spans(book) if s.reason == Reason.FIGURE]
+    assert "A map of the coast" in figures
+    assert "One" not in [s.text.strip() for s in all_spans(book)]  # <head><title> isn't text
+
+
+def _spaced_pdf(path: Path, pages: list[list[str]]) -> Path:
+    """Word-export style: body text with a blank line's space between paragraphs, so
+    each paragraph stands apart from the next (as running heads do)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    for paragraphs in pages:
+        pdf.setFont("Helvetica", 11)
+        y = A4[1] - 72
+        for paragraph in paragraphs:
+            for line in paragraph.split("\n"):
+                pdf.drawString(72, y, line)
+                y -= 15
+            y -= 15  # space after the paragraph
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+WORDS = [
+    "lamp",
+    "gull",
+    "rope",
+    "tide",
+    "boat",
+    "stone",
+    "wind",
+    "salt",
+    "mast",
+    "bell",
+    "oar",
+    "net",
+    "fog",
+    "cliff",
+    "wave",
+    "reef",
+]
+
+
+def filler(page: int, part: int) -> str:
+    """Body text that differs on every page in its words (running-head detection ignores
+    digits, and text repeating at the top of most pages is a running head)."""
+    pick = [WORDS[(page * 7 + part * 3 + n) % len(WORDS)] for n in range(9)]
+    return "\n".join(
+        f"The keeper found the {pick[3 * n]} by the {pick[3 * n + 1]} near the {pick[3 * n + 2]}."
+        for n in range(3)
+    )
+
+
+def test_top_lines_shaped_like_numbered_heads_are_kept(tmp_path):
+    """Review finding 14: one page starting "I never…" or ending "…1914" isn't a head."""
+    pages = [
+        [filler(1, 1), filler(1, 2)],
+        ["I never saw him again after that summer.", filler(2, 1)],
+        ["and the bill came to 1914", filler(3, 1)],
+        [filler(4, 1), filler(4, 2)],
+    ]
+    book = read_book(_spaced_pdf(tmp_path / "word.pdf", pages))
+    text = " ".join(p.text for c in book.chapters for p in c.paragraphs)
+    assert "I never saw him again after that summer." in text
+    assert "and the bill came to 1914" in text
+    assert not [s for s in book.removals if s.reason == Reason.HEADER]
+
+
+def test_recurring_numbered_heads_are_still_removed(tmp_path):
+    pages = [[f"{n} THE LANTERN KEEPER", filler(n, 1)] for n in range(2, 8)]
+    book = read_book(_spaced_pdf(tmp_path / "heads.pdf", pages))
+    heads = [s for s in book.removals if s.reason == Reason.HEADER]
+    assert len(heads) == 6 and all(s.location.page for s in heads)
+
+
+def _drop_cap_pdf(path: Path, openings: list[tuple[str, str]]) -> Path:
+    """Each page opens with a big drop-cap letter beside the rest of its first line, then
+    ordinary lines that use some words again (the evidence the rule looks for)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    for cap, rest in openings:
+        top = A4[1] - 100
+        pdf.setFont("Helvetica", 40)
+        pdf.drawString(72, top - 20, cap)
+        pdf.setFont("Helvetica", 11)
+        pdf.drawString(104, top, rest)
+        for n, line in enumerate(
+            ["The lamp was long and the night was long.", "He was there and so was she."]
+        ):
+            pdf.drawString(72, top - 60 - 15 * n, line)
+        pdf.showPage()
+    pdf.save()
+    return path
+
+
+@pytest.mark.parametrize(
+    ("cap", "rest", "reads"),
+    [
+        ("T", "he tower stood alone.", "The tower stood alone."),
+        ("I", "t stood alone.", "It stood alone."),
+        ("I", "was born in the village.", "I was born in the village."),
+        ("A", "long time ago it stood.", "A long time ago it stood."),
+    ],
+)
+def test_drop_caps_join_only_with_evidence(tmp_path, cap, rest, reads):
+    """Review finding 12: "I" + "was" became "Iwas", "A" + "long" became "Along"."""
+    book = read_book(_drop_cap_pdf(tmp_path / "cap.pdf", [(cap, rest)]))
+    text = " ".join(p.text for c in book.chapters for p in c.paragraphs)
+    assert text.startswith(reads)
+
+
+def test_text_drawn_twice_is_read_once(tmp_path):
+    """Review finding 15: "fake bold" (the same text drawn twice, a hair apart)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    path = tmp_path / "bold.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    pdf.setFont("Helvetica", 20)
+    for dx in (0, 0.4):
+        pdf.drawString(72 + dx, A4[1] - 100, "Chapter 1")
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(72, A4[1] - 140, "The tower stood alone on the rock.")
+    pdf.save()
+    book = read_book(path)
+    text = " ".join(p.text for c in book.chapters for p in c.paragraphs)
+    assert "Chapter 1" in text and "CChh" not in text
+
+
+@pytest.mark.parametrize(
+    ("text", "caption"),
+    [
+        ("Figure 1. The lantern room at dusk.", True),
+        ("Table 2: Harvests by year", True),
+        ("Fig. 3 The coast at low tide", True),
+        ("Plate IV", True),
+        ("Table 2 shows that the harvest doubled between the two surveys.", False),
+        ("Figure 3 makes the point clearer than any table could.", False),
+    ],
+)
+def test_captions_need_a_caption_shape(text, caption):
+    """Review finding 13: body sentences that begin "Table 2 …" aren't captions."""
+    from pagevoice.cleanup.en import is_caption
+
+    assert is_caption(text) is caption
+
+
+def test_restored_hyphen_goes_back_after_the_right_word(tmp_path):
+    """Review finding 23: restoring the hyphen of "word-/less" put it after the first
+    "word" on the line, because spans were found by equal text."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    from pagevoice.edit import set_restored
+
+    path = tmp_path / "hyphen.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    pdf.setFont("Helvetica", 11)
+    y = A4[1] - 100
+    for line in ["It was a word and only a word and then a word-", "less silence fell."]:
+        pdf.drawString(72, y, line)
+        y -= 15
+    pdf.save()
+    book = read_book(path)
+    paragraph = next(p for c in book.chapters for p in c.paragraphs if "silence" in p.text)
+    assert paragraph.text == "It was a word and only a word and then a wordless silence fell."
+    hyphen = next(s for s in paragraph.spans if s.reason == Reason.HYPHEN)
+    set_restored(hyphen, True)
+    assert paragraph.text == "It was a word and only a word and then a word-less silence fell."
+
+
+def test_bookmark_partway_down_a_page_starts_the_chapter_there(tmp_path):
+    """Review finding 7: chapter Two began at the top of its page, taking the end of One."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    path = tmp_path / "marks.pdf"
+    pdf = canvas.Canvas(str(path), pagesize=A4)
+    top = A4[1] - 100
+
+    def heading(key, title, y):
+        pdf.bookmarkPage(key, fit="XYZ", top=y + 20)
+        pdf.addOutlineEntry(title, key, level=0)
+        pdf.setFont("Helvetica-Bold", 18)
+        pdf.drawString(72, y, title)
+        pdf.setFont("Helvetica", 11)
+
+    heading("one", "One", top)
+    body = [
+        "    The first chapter begins on the first page, and it goes on",
+        "for a few lines so that the page has a left margin and an",
+        "ordinary paragraph shape before the page ends.",
+    ]
+    for n, line in enumerate(body):
+        pdf.drawString(72, top - 40 - 15 * n, line)
+    pdf.showPage()
+    pdf.setFont("Helvetica", 11)
+    for n, line in enumerate(
+        ["    This is the LAST paragraph of chapter one, which", "starts at the top of page two."]
+    ):
+        pdf.drawString(72, top - 15 * n, line)
+    heading("two", "Two", top - 300)
+    pdf.drawString(72, top - 340, "Chapter two begins halfway down the page.")
+    pdf.save()
+
+    book = read_book(path)
+    by_title = {c.title: " ".join(p.text for p in c.paragraphs) for c in book.chapters}
+    assert "LAST paragraph of chapter one" in by_title["One"]
+    assert "LAST paragraph of chapter one" not in by_title["Two"]
+    assert "Chapter two begins halfway down the page." in by_title["Two"]

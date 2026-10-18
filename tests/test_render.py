@@ -243,8 +243,29 @@ def test_chapter_audio_joins_paragraphs_with_pauses(voice, cache):
     renderer.run()
     audio = renderer.chapter_audio(0)
     s = renderer.settings
-    pauses = s.heading_pause + 2 * s.paragraph_pause + s.chapter_pause
-    assert len(audio) == 3 * 2400 + int(pauses * 24000) or len(audio) > 3 * 2400
+    pauses = (s.heading_pause, s.paragraph_pause, s.chapter_pause)
+    heading, paragraph, chapter = (int(x * 24000) for x in pauses)
+    # The fake voice makes 2400 samples of 0.1 for each of the heading, "One." and "Two.".
+    assert len(audio) == 3 * 2400 + heading + 2 * paragraph + chapter
+    voiced = np.flatnonzero(audio)
+    starts = [0, 2400 + heading, 2 * 2400 + heading + paragraph]
+    assert [int(v) for v in voiced[np.r_[0, np.flatnonzero(np.diff(voiced) > 1) + 1]]] == starts
+    assert not audio[-chapter:].any()  # the chapter ends in silence
+
+
+def test_streamed_chapter_matches_the_joined_audio(voice, cache, tmp_path):
+    """Review finding 5: export writes a chapter paragraph by paragraph, not all at once."""
+    import soundfile
+
+    renderer = Renderer(book("One.", "Two.", "Three."), voice, cache, book_id="b")
+    with pytest.raises(LookupError):
+        renderer.write_chapter(0, tmp_path / "c.flac")
+    renderer.run()
+    seconds = renderer.write_chapter(0, tmp_path / "c.flac")
+    written, rate = soundfile.read(str(tmp_path / "c.flac"), dtype="float32")
+    joined = renderer.chapter_audio(0)
+    assert rate == 24000 and len(written) == len(joined) == round(seconds * 24000)
+    assert np.allclose(written, joined, atol=1e-4)
 
 
 @pytest.mark.slow

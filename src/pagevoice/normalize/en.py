@@ -89,8 +89,9 @@ def ordinal(n: int) -> str:
 
 
 def year(n: int) -> str:
-    """1945 -> nineteen forty-five, 1905 -> nineteen oh five, 2008 -> two thousand eight."""
-    if 2000 <= n <= 2009:
+    """1945 -> nineteen forty-five, 1905 -> nineteen oh five, 1066 -> ten sixty-six,
+    2008 -> two thousand eight, 1000 -> one thousand."""
+    if n % 1000 < 10:
         return cardinal(n)
     high, low = divmod(n, 100)
     if low == 0:
@@ -138,6 +139,15 @@ PHRASES = {
     "viz.": "namely", "cf.": "compare", "approx.": "approximately", "a.m.": "a m",
     "p.m.": "p m", "A.M.": "a m", "P.M.": "p m", "A.D.": "A D", "B.C.": "B C",
 }  # fmt: skip
+# Abbreviations that often end a sentence ("…at 5 p.m. The bell rang."); "e.g." and "vs."
+# are followed by names mid-sentence, so they never keep a full stop.
+SENTENCE_FINAL = {"etc.", "a.m.", "p.m.", "A.M.", "P.M.", "A.D.", "B.C."}
+# Capitalised words that start sentences far more often than they're names.
+SENTENCE_STARTERS = {
+    "The", "A", "An", "He", "She", "It", "They", "We", "I", "You", "But", "And", "Then",
+    "There", "This", "That", "These", "Those", "His", "Her", "Its", "Their", "Our", "In",
+    "On", "At", "When", "After", "Before", "As", "If", "So", "Yet", "Now", "No",
+}  # fmt: skip
 BEFORE_NUMBER = {
     "No.": "number", "no.": "number", "Nos.": "numbers", "p.": "page", "pp.": "pages",
     "fig.": "figure", "Fig.": "figure", "figs.": "figures", "est.": "established",
@@ -157,6 +167,7 @@ ROMAN_CARDINAL_AFTER = {
     "article", "psalm", "canto", "stave", "letter", "page", "appendix", "plate", "class",
     "level", "type", "stage", "round", "series", "edition", "number", "no",
 }  # fmt: skip
+REGNAL_MAX = 30  # the highest regnal number read as "the Nth"
 _ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
 
 
@@ -220,8 +231,14 @@ def _time(match: re.Match) -> str:
     return f"{cardinal(hour)} {cardinal(minute)}"
 
 
+FRACTION_DENOMINATORS = {2, 3, 4, 5, 6, 8, 10, 12, 16, 32, 64, 100}
+
+
 def _fraction(match: re.Match) -> str:
+    """1/2, 3/4, 7/16: fractions. 9/11, 24/7, 50/50, 20/20: two numbers, as said."""
     top, bottom = int(match.group(1)), int(match.group(2))
+    if not (0 < top < bottom and bottom in FRACTION_DENOMINATORS):
+        return f"{cardinal(top)} {cardinal(bottom)}"
     if bottom == 2:
         name = "half" if top == 1 else "halves"
     elif bottom == 4:
@@ -247,11 +264,16 @@ _CLAUSE_END = re.compile(r"\s*(?:[.,;:!?)\]\"'”’—–]|$)")
 _ERA = re.compile(r"\s+(?:A D|B C|C E|B C E)\b")
 
 
+def _year_cue(string: str, start: int) -> bool:
+    """A word that says "year" right before the number ("in 1066", "since 2312")."""
+    word = _WORD_BEFORE.search(string[:start])
+    return bool(word and word.group(1).lower() in _YEAR_CUES)
+
+
 def _year_context(string: str, start: int, end: int) -> bool:
     before, after = string[:start], string[end:]
-    word = _WORD_BEFORE.search(before)
     return bool(
-        (word and word.group(1).lower() in _YEAR_CUES)
+        _year_cue(string, start)
         or _YEAR_LINK.search(before)
         or _SENTENCE_START.search(before)
         or _CLAUSE_END.match(after)
@@ -265,8 +287,13 @@ def _number(match: re.Match) -> str:
     if "," in text or "." in text:
         return decimal(text)
     value = int(text)
-    if len(text) == 4 and is_year(value) and _year_context(match.string, *match.span()):
-        return year(value)
+    if len(text) == 4:
+        # With a cue word ("in 1066", "since 2312") any year 1000-2999 is one; without,
+        # only 1100-2099 with other context (counts like "1500 soldiers" are common).
+        if 1000 <= value <= 2999 and _year_cue(match.string, match.start()):
+            return year(value)
+        if is_year(value) and _year_context(match.string, *match.span()):
+            return year(value)
     return cardinal(value)
 
 
@@ -289,6 +316,8 @@ def _roman(match: re.Match) -> str:
     value = roman_value(numeral)
     if value is None:
         return match.group(0)
+    if match.string[match.end() : match.end() + 1] == "-":
+        return match.group(0)  # "no mix-up", "a CD-ROM": part of a word
     keyword = before.strip().rstrip(".").lower()
     if keyword in ROMAN_CARDINAL_AFTER:
         # A lone "I" after a lowercase keyword is the pronoun when a word follows: "the
@@ -297,9 +326,11 @@ def _roman(match: re.Match) -> str:
         if numeral in ("I", "i") and before.strip()[:1].islower() and word_after:
             return match.group(0)
         return f"{before}{cardinal(value)}"
-    # "Henry VIII", "John Paul II": a capitalised name, a numeral of two or more letters
-    # (a lone "I" after a name is too often the pronoun).
-    if before.strip()[:1].isupper() and len(numeral) > 1 and numeral.isupper():
+    # "Henry VIII", "John Paul II", "John XXIII": a capitalised name, a numeral of two or
+    # more letters (a lone "I" after a name is too often the pronoun), and a number a
+    # monarch or pope could have: "Washington DC", "Jane Doe MD" and "Size XL" aren't.
+    regnal = before.strip()[:1].isupper() and len(numeral) > 1 and numeral.isupper()
+    if regnal and value <= REGNAL_MAX:
         return f"{before}the {ordinal(value).capitalize()}"
     return match.group(0)
 
@@ -331,16 +362,30 @@ def _abbreviation(match: re.Match) -> str:
     Street. A capitalised name after it means a title; a capitalised word or number before
     it, with no name after, means the street (or company) word."""
     before, short, after = match.group(1) or "", match.group(2), match.group(3) or ""
-    name_after = bool(re.match(r"\s+[A-Z]", after))
+    next_word = after.strip()
+    sentence_after = not next_word or next_word.strip("\"“'‘(") in SENTENCE_STARTERS
+    name_after = bool(re.match(r"\s+[A-Z]", after)) and not sentence_after
     word_before = before.strip()
     named_before = bool(word_before) and (word_before[0].isupper() or word_before[0].isdigit())
     if short in AFTER_NAME and named_before and (not name_after or short not in TITLES):
         long = AFTER_NAME[short]
+        if sentence_after:
+            long += "."  # "Baker St. The house…": the full stop also ends the sentence
     elif short in TITLES:
         long = TITLES[short]
     else:
         long = AFTER_NAME[short]
     return f"{before}{long}{after}"
+
+
+def _phrase(long: str):
+    def expand(match: re.Match) -> str:
+        """Keep the full stop when the abbreviation ends the sentence: "pears, etc. Then"."""
+        rest = match.string[match.end() :]
+        ends = re.match(r"\s*$", rest) or re.match(r"\s+[\"“‘(]?[A-Z]", rest)
+        return long + "." if ends and match.group(0) in SENTENCE_FINAL else long
+
+    return expand
 
 
 def normalize(text: str) -> str:
@@ -371,7 +416,7 @@ def normalize(text: str) -> str:
 
     # Phrases and abbreviations (before the period-sensitive rules below).
     for short, long in PHRASES.items():
-        t = re.sub(rf"(?<!\w){re.escape(short)}(?=\W|$)", long, t)
+        t = re.sub(rf"(?<!\w){re.escape(short)}(?=\W|$)", _phrase(long), t)
     for short, long in BEFORE_NUMBER.items():
         t = re.sub(rf"(?<!\w){re.escape(short)}\s*(?=\d)", long + " ", t)
     for _ in range(3):  # neighbours ("Lt. Col.") overlap, so repeat until settled
