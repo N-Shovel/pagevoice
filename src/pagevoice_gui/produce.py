@@ -84,8 +84,8 @@ class _Stopped(Exception):
 class _Planned:
     """The render plan, with its counts worked out on the worker (cache lookups)."""
 
-    def __init__(self, renderer: Renderer) -> None:
-        self.renderer = renderer
+    def __init__(self, renderer: Renderer, generation: int) -> None:
+        self.renderer, self.generation = renderer, generation
         self.total = len(renderer.items)
         self.done = self.total - len(renderer.pending())
 
@@ -115,6 +115,7 @@ class ProducePage(QWidget):
         self.pause = threading.Event()
         self.settings = QSettings()
         self._busy = self._rendering = False
+        self._generation = 0  # bumped by plan_changed()
         self._download_cancelled = threading.Event()
         self.step_names = {"Preparing chapters": self.tr("Preparing chapters"),
                            "Encoding": self.tr("Encoding")}  # fmt: skip
@@ -152,7 +153,7 @@ class ProducePage(QWidget):
         links = QHBoxLayout()
         # Buttons emit the page's signals through a lambda: PySide6 can't take a signal
         # instance as a slot ("native Qt signal instance is not callable").
-        pronunciations = QPushButton(self.tr("Pronunciations…"))
+        self.pronunciations = pronunciations = QPushButton(self.tr("Pronunciations…"))
         pronunciations.clicked.connect(lambda: self.pronunciations_clicked.emit())
         back = QPushButton(self.tr("Back to review"))
         back.clicked.connect(lambda: self.review_clicked.emit())
@@ -242,8 +243,10 @@ class ProducePage(QWidget):
 
     def plan_changed(self) -> None:
         """Review, pronunciation or voice settings changed: the next render or export
-        works out again which paragraphs need audio (changed ones only)."""
+        works out again which paragraphs need audio (changed ones only). A plan still
+        being made from the old settings is thrown away when it arrives."""
         self.renderer = None
+        self._generation += 1
 
     def _settings_changed(self, *_args) -> None:
         self.settings.setValue("voice", self.voice.currentData())
@@ -281,7 +284,7 @@ class ProducePage(QWidget):
         idle = not self._busy and self.session is not None
         for widget in (self.render_button, self.export_button, self.voice, self.speed,
                        self.read_notes, self.use_gpu, self.m4b, self.mp3, self.target,
-                       self.browse, self.free_button):  # fmt: skip
+                       self.browse, self.free_button, self.pronunciations):  # fmt: skip
             widget.setEnabled(idle)
         self.pause_button.setEnabled(self._busy and self._rendering)
         self.stop_button.setEnabled(self._busy)
@@ -295,7 +298,7 @@ class ProducePage(QWidget):
     def _planner(self) -> Callable[[Callable], _Planned]:
         """Read the settings here, on the UI thread. The returned function runs on a
         worker: it checks the voice files (hashing ~300 MB once) and plans the render."""
-        existing = self.renderer
+        existing, generation = self.renderer, self._generation
         voice_name, speed = self.voice.currentData(), self.speed.value()
         provider = "dml" if self.use_gpu.isChecked() else "cpu"
         drop_notes = not self.read_notes.isChecked()
@@ -304,7 +307,7 @@ class ProducePage(QWidget):
 
         def plan(report) -> _Planned:
             if existing is not None:
-                return _Planned(existing)
+                return _Planned(existing, generation)
             report(checking)
             voice = factory(voice_name, provider)
             if not voice.ready():
@@ -319,9 +322,14 @@ class ProducePage(QWidget):
                     settings=RenderSettings(speed=speed, drop_notes=drop_notes),
                     pronunciations=entries_for(session.pronunciations_path),
                 )
-            return _Planned(renderer)
+            return _Planned(renderer, generation)
 
         return plan
+
+    def _keep_plan(self, planned: _Planned) -> None:
+        """Keep a plan for reuse only if nothing changed while it was being made."""
+        if planned.generation == self._generation:
+            self.renderer = planned.renderer
 
     def _begin(self, rendering: bool) -> None:
         self._busy, self._rendering = True, rendering
@@ -354,7 +362,7 @@ class ProducePage(QWidget):
         if isinstance(value, str):
             self.status.setText(value)
         elif isinstance(value, _Planned):
-            self.renderer = value.renderer
+            self._keep_plan(value)
             self.progress.setMaximum(max(1, value.total))
             self.progress.setValue(value.done)
             message = self.tr("%1 of %2 paragraphs already rendered. Rendering the rest…")
@@ -457,7 +465,7 @@ class ProducePage(QWidget):
 
     def _export_progress(self, value) -> None:
         if isinstance(value, _Planned):
-            self.renderer = value.renderer
+            self._keep_plan(value)
             if problem := Metadata.from_book(value.renderer.book).cover_problem():
                 self.export_status.setText(problem)
         elif isinstance(value, tuple):
