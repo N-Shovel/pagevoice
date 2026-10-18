@@ -150,10 +150,14 @@ class ProducePage(QWidget):
         form.addRow(self.read_notes)
         form.addRow(self.use_gpu)
         links = QHBoxLayout()
-        links.addWidget(
-            QPushButton(self.tr("Pronunciations…"), clicked=self.pronunciations_clicked)
-        )
-        links.addWidget(QPushButton(self.tr("Back to review"), clicked=self.review_clicked))
+        # Buttons emit the page's signals through a lambda: PySide6 can't take a signal
+        # instance as a slot ("native Qt signal instance is not callable").
+        pronunciations = QPushButton(self.tr("Pronunciations…"))
+        pronunciations.clicked.connect(lambda: self.pronunciations_clicked.emit())
+        back = QPushButton(self.tr("Back to review"))
+        back.clicked.connect(lambda: self.review_clicked.emit())
+        links.addWidget(pronunciations)
+        links.addWidget(back)
         links.addStretch()
         form.addRow(links)
 
