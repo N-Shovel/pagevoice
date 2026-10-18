@@ -20,12 +20,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import soundfile
-
 from pagevoice import __version__
 from pagevoice.export.ffmpeg import Cancelled, FfmpegError, find_ffmpeg, run
 from pagevoice.render.renderer import Renderer
-from pagevoice.voice.kokoro import SAMPLE_RATE
 
 log = logging.getLogger(__name__)
 
@@ -84,10 +81,8 @@ def _write_chapters(
     for index in range(total):
         if stop is not None and stop.is_set():
             raise Cancelled
-        audio = renderer.chapter_audio(index)
         path = folder / f"chapter-{index + 1:04d}.flac"
-        soundfile.write(str(path), audio, SAMPLE_RATE, format="FLAC", subtype="PCM_16")
-        out.append((path, len(audio) / SAMPLE_RATE))
+        out.append((path, renderer.write_chapter(index, path)))  # streamed: little memory
         if progress:
             progress("Preparing chapters", (index + 1) / total)
     return out

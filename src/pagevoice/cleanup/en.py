@@ -33,10 +33,6 @@ FOOTNOTE_REF = re.compile(r"\[(?:\d{1,3}|[A-Z]|[*†‡])\]")
 
 CONTENTS = re.compile(r"^\s*(?:table of )?contents\.?\s*$", re.I)
 
-GUTENBERG_START = re.compile(r"^\s*\*{3}\s*START OF (?:THE|THIS) PROJECT GUTENBERG", re.I)
-GUTENBERG_END = re.compile(r"^\s*\*{3}\s*END OF (?:THE|THIS) PROJECT GUTENBERG", re.I)
-GUTENBERG_FIELD = re.compile(r"^(Title|Author|Language):\s*(.+)$", re.M)
-
 
 def is_chapter_heading(text: str) -> bool:
     return len(text) <= 80 and bool(CHAPTER.match(text))
