@@ -285,6 +285,20 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
 - **Preview playback:** PySide6-Essentials has no QtMultimedia, so previews play with `winsound` on Windows, and `pw-play`, `paplay` or `aplay` on Linux.
 - **Errors:** never shown as a traceback. They're logged to the per-user log folder and shown as a short message.
 
+### D36. Listen: play rendered chapters in the app (2026-10-19)
+- **The owner's call:** PageVoice stays an audiobook maker, not a reader. But you can hear the result before exporting, so a wrong name or pause is caught without an export and an outside player.
+- **Engine** (`render/playback.py`, no Qt):
+  - A chapter is a timeline of cached paragraphs plus their pauses. Lengths come from the FLAC headers, so no audio is loaded to build it.
+  - `ChapterPlayer` writes it to the sound card in 0.1 s blocks on its own thread, so pause, seek and stop act within about 0.1 s.
+  - A paragraph that isn't rendered is waited for while a render runs; otherwise playback ends there and says so.
+- **GUI:** a Listen bar under every step once a book is open: chapter, play/pause, stop, a seek slider, the time, and the paragraph being read. Review's right-click adds "Listen from here".
+  - It plays from the same render plan as Render and Export; nothing is rendered for it.
+  - It works during a render, and stops when the book's audio is freed, the book is cleaned again, or the app quits.
+- **Playback library:** sounddevice (MIT, PortAudio), in the `gui` extra.
+  - *Rejected:* QtMultimedia, because PySide6-Addons would make the install much bigger; and opening the chapter in the system player, because it can't jump to a paragraph or show the text.
+  - Linux needs libportaudio2; without it, listening says plainly that sound can't be played.
+  - M5 must leave the ASIO builds of PortAudio (`*-asio.dll`) out of the Windows package (Steinberg licence).
+
 ---
 
 ## Dependency log
@@ -313,3 +327,4 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-16 | soundfile | BSD-3-Clause (bundles libsndfile, LGPL-2.1) | runtime | FLAC paragraph cache (D33) |
 | 2026-10-16 | mutagen | GPL-2.0-or-later | dev | Reads back M4B chapters and tags and MP3 ID3 tags in `tests/test_export.py`; the bundled ffmpeg has no ffprobe or AAC/MP3 decoders. Never shipped |
 | 2026-10-16 | PySide6-Essentials 6.12 | LGPL-3.0 (or GPL-2.0/3.0) | gui extra | The desktop app (D2). The Essentials subset (QtCore, QtGui, QtWidgets) without the add-on modules; pulls in shiboken6 (same licence). About 209 MB installed; the M5 build keeps only the Qt libraries used |
+| 2026-10-19 | sounddevice 0.5 | MIT (pulls cffi MIT-0, pycparser BSD-3-Clause; bundles PortAudio, MIT-style) | gui extra | Playing rendered chapters in the app (D36). The wheel also carries ASIO builds of PortAudio (`*-asio.dll`): ASIO is under Steinberg's own licence, so M5 must leave those files out of the build. Linux uses the system's libportaudio2 |

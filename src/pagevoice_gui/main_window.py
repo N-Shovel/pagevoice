@@ -31,6 +31,7 @@ from pagevoice.render.renderer import speak
 from pagevoice.voice.engine import VoiceSetup
 from pagevoice.voice.kokoro import SAMPLE_RATE
 from pagevoice_gui import playback, tasks
+from pagevoice_gui.listen import ListenBar
 from pagevoice_gui.produce import ProducePage, VoiceFactory, VoiceUnavailable
 from pagevoice_gui.pronunciations import PronunciationDialog
 from pagevoice_gui.review import ReviewPage
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
         *,
         dml: bool = False,
         allow_upstream_download: bool = False,
+        stream_factory=None,  # tests replace the sound card
     ) -> None:
         super().__init__()
         self.setWindowTitle("PageVoice")
@@ -114,6 +116,14 @@ class MainWindow(QMainWindow):
         self.produce_page.pronunciations_clicked.connect(self.edit_pronunciations)
         self.produce_page.busy_changed.connect(self._set_busy)
         self.produce_page.notes_setting_changed.connect(self.review_page.refresh)
+        self.listen_bar = ListenBar(
+            self.produce_page.renderer_for_listening,
+            lambda: self.produce_page.rendering,
+            stream_factory=stream_factory,
+        )
+        self.listen_bar.hide()
+        self.review_page.listen_from.connect(self.listen_bar.play_from)
+        self.produce_page.audio_freed.connect(self.listen_bar.stop)
 
         self.stack = QStackedWidget()
         for page in (self.open_page, self.review_page, self.produce_page):
@@ -133,6 +143,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.addLayout(step_bar)
         layout.addWidget(self.stack, 1)
+        layout.addWidget(self.listen_bar)
         self.setCentralWidget(central)
 
         file_menu = self.menuBar().addMenu(self.tr("&File"))
@@ -242,7 +253,20 @@ class MainWindow(QMainWindow):
         )
         self._update_steps()
 
+    def _chapter_titles(self) -> None:
+        """Keep the Listen bar's chapter list in step with review edits."""
+        titles = [c.title for c in self.session.book.chapters] if self.session else []
+        bar = self.listen_bar
+        if bar.chapter.count() == len(titles):
+            for index, title in enumerate(titles):
+                bar.chapter.setItemText(index, f"{index + 1}. {title}")
+        else:
+            bar.set_chapters(titles, bar.chapter.currentIndex())
+
     def set_session(self, session: Session) -> None:
+        self.listen_bar.set_chapters([c.title for c in session.book.chapters])
+        self.listen_bar.show()
+        session.edited.connect(self._chapter_titles)
         self.session = session
         self.setWindowTitle(f"{session.book.title} – PageVoice")
         self.review_page.set_session(session)
@@ -258,6 +282,7 @@ class MainWindow(QMainWindow):
     def clean_again(self) -> None:
         if self.session is None or self._busy:
             return
+        self.listen_bar.stop()
         session, self.session = self.session, None
         book_id, source = session.book_id, session.source
 
@@ -327,6 +352,7 @@ class MainWindow(QMainWindow):
     # --- quitting ---
 
     def closeEvent(self, event) -> None:
+        self.listen_bar.stop()
         if self._busy:
             answer = QMessageBox.question(
                 self,

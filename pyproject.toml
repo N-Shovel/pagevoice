@@ -25,6 +25,7 @@ dependencies = [
 # The desktop app (D2). PySide6-Essentials: QtCore, QtGui and QtWidgets without the add-ons.
 gui = [
     "PySide6-Essentials>=6.8",
+    "sounddevice>=0.5",  # playing rendered chapters (Listen); D36
 ]
 
 [project.scripts]
