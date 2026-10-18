@@ -79,11 +79,14 @@ def parse(text: str) -> list[Entry]:
     text = text.lstrip("﻿")
     entries = []
     rows = csv.reader(io.StringIO(text), delimiter="\t")
+    first = True  # the first row that isn't blank or a comment may be the header
     for line, row in enumerate(rows, 1):
         if not row or not any(cell.strip() for cell in row) or row[0].startswith("#"):
             continue
-        if line == 1 and row[0].strip().lower() == "word":
-            continue  # header
+        if first and row[0].strip().lower() == "word":
+            first = False
+            continue  # header (after any comment lines)
+        first = False
         row = [cell.strip() for cell in row] + [""] * (len(COLUMNS) - len(row))
         word, sounds_like, phonemes = row[0], row[1], row[2]
         if not word:
@@ -118,11 +121,22 @@ def dump(entries: list[Entry]) -> str:
     return out.getvalue()
 
 
+def comments(path: Path) -> list[str]:
+    """The "#" comment lines of an existing list ("# Names from the Wheel of Time")."""
+    try:
+        lines = decode(Path(path).read_bytes()).splitlines()
+    except OSError:
+        return []
+    return [line for line in lines if line.lstrip("\ufeff").startswith("#")]
+
+
 def save(path: Path, entries: list[Entry]) -> None:
+    """Write the list, keeping the file's comment lines at the top."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    kept = comments(path) if path.exists() else []
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(dump(entries), encoding="utf-8")
+    tmp.write_text("".join(c + "\n" for c in kept) + dump(entries), encoding="utf-8")
     tmp.replace(path)
 
 

@@ -274,8 +274,7 @@ class ReviewPage(QWidget):
         if ref not in self._spans:
             return
         span, block = self._spans[ref]
-        with self.session.lock:
-            set_restored(span, not span.restored)
+        set_restored(span, not span.restored)
         self._removed[span.reason] += -1 if span.restored else 1
         self._restored += 1 if span.restored else -1
         self._restyle(f"span:{ref}", block, span.restored)
@@ -358,8 +357,7 @@ class ReviewPage(QWidget):
             if not ok:
                 return
         try:
-            with self.session.lock:
-                split_at(self.session.book, index, paragraph, title)
+            split_at(self.session.book, index, paragraph, title)
         except EditError as exc:
             QMessageBox.information(self, self.tr("Split chapter"), str(exc))
             return
@@ -379,8 +377,7 @@ class ReviewPage(QWidget):
             if not ok:
                 return
         try:
-            with self.session.lock:
-                rename_chapter(self.session.book, index, title)
+            rename_chapter(self.session.book, index, title)
         except EditError as exc:
             QMessageBox.information(self, self.tr("Rename chapter"), str(exc))
             return
@@ -392,8 +389,7 @@ class ReviewPage(QWidget):
         for chapter in self.session.book.chapters[index : index + 2]:
             self._words.pop(id(chapter), None)
         try:
-            with self.session.lock:
-                merge_with_next(self.session.book, index)
+            merge_with_next(self.session.book, index)
         except EditError as exc:
             QMessageBox.information(self, self.tr("Merge chapters"), str(exc))
             return

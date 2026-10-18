@@ -4,7 +4,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 
 - **Last updated:** 2026-10-19
 - **Milestone:** after M4: the external review's fixes, then the Listen feature. M0–M4 are done and merged (PRs #8, #9). M5 (installer) comes last.
-- **Branch:** listen-mode (built on review-safety-fixes)
+- **Branch:** review-reading-cleanup (built on listen-mode)
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
   1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
@@ -74,18 +74,34 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The engine's `render/playback.py` (timeline and player) and the GUI's Listen bar.
   - Review's right-click has "Listen from here".
   - sounddevice is in the `gui` extra, and CI installs libportaudio2.
-- **Fast tests:** 293 passed, 1 skipped.
+- **Piece 3 = review reading and cleanup fixes, on `review-reading-cleanup`** (PR after #13; see D37):
+  - Cleanup findings: 6, 7, 12, 13, 14, 15, 23.
+  - Reading findings: 8, 9, 10, 18, 19.
+  - Other findings:
+    - 5: chapters are streamed to disk
+    - 11: saves never block edits
+    - 22: pronunciation-file comments are kept
+    - the rule gaps (SVG `<title>`; Gutenberg markers moved out of `cleanup/en.py`)
+    - the test that couldn't fail
+- **Not done from the review** (low priority):
+  - quitting during a render keeps the process alive until the paragraph ends
+  - "ER", "ICU" and "WWII" (better as pronunciation entries)
+  - "$0.50" and "007"
+  - EPUB UTF-16
+  - the `.bak` overwrite
+  - the G2P warning race
+  - the preview temp file
+  - the double space in an MP3 name
+- **Fast tests:** 331 passed, 1 skipped. Slow tests: 4 passed.
 
 ## Next step
-1. Piece 3 on a new branch: the review's reading and cleanup findings:
-   - findings 5–15, 18, 19, 22, 23
-   - the rule gaps: SVG `<title>`, and `txt.py` importing `cleanup.en`
-   - the test that can't fail (`test_chapter_audio_joins_paragraphs_with_pauses`)
-
-   Cleanup fixes go through the add-cleanup-rule skill. Expected spoken forms are human-owned, so new ones go into `sentences.proposed.tsv`.
-2. M5 last.
+1. When the owner merges #11, #12, #13 and this PR: M5 (installer), the last piece.
+   - Remember from D36: leave PortAudio's `*-asio.dll` out of the build.
+   - Attach the pinned sources of espeak-ng, ffmpeg and LAME to each release.
 
 ## Waiting on the owner
+- **Merge, in order:** #11 (buttons), #12 (safety fixes), #13 (Listen), then piece 3. Each builds on the one before; the permission settings don't let Claude merge.
+- **Proposed spoken forms:** `tests/voice/sentences.proposed.tsv` (12 rows from the review). Copy the rows you agree with into `sentences.tsv`.
 - **Model manifest:**
   - Check `src/pagevoice/voice/model_manifest.proposed.json`.
   - Create the `models-kokoro-v1.0` GitHub release with those files and Kokoro's Apache-2.0 notice.

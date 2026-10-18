@@ -314,15 +314,14 @@ class ProducePage(QWidget):
             if not voice.ready():
                 raise _NeedsDownload(voice)
             report(preparing)
-            with session.lock:
-                renderer = Renderer(
-                    session.book,
-                    voice,
-                    cache,
-                    book_id=session.book_id,
-                    settings=RenderSettings(speed=speed, drop_notes=drop_notes),
-                    pronunciations=entries_for(session.pronunciations_path),
-                )
+            renderer = Renderer(
+                session.book,
+                voice,
+                cache,
+                book_id=session.book_id,
+                settings=RenderSettings(speed=speed, drop_notes=drop_notes),
+                pronunciations=entries_for(session.pronunciations_path),
+            )
             return _Planned(renderer, generation)
 
         return plan

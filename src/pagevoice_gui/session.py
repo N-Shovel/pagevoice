@@ -16,33 +16,48 @@ log = logging.getLogger(__name__)
 class Session(QObject):
     """One open book. edited fires after any review edit (the render plan is then stale).
 
-    lock guards the book: review edits (tiny) take it on the UI thread, and saves take it on
-    a worker while they copy the book. A save copies and writes under the lock, so saves
-    land in the order they started and the newest edits are always the ones on disk."""
+    Review edits happen on the UI thread and never wait for anything. A save copies the
+    book on a worker; if an edit lands during the copy (the edit counter moved), it copies
+    again. Saves are written one at a time, and an older copy never replaces a newer one."""
 
     edited = Signal()
 
     def __init__(self, book: Book, book_id: str, source: Path, *, resumed: bool = False) -> None:
         super().__init__()
         self.book, self.book_id, self.source, self.resumed = book, book_id, source, resumed
-        self.lock = threading.RLock()
+        self.edits = 0  # bumped by every edit (UI thread)
+        self.saving = threading.Lock()  # one write at a time
+        self._written = -1  # the edit count of the copy last written
         self._save_timer = QTimer(self, singleShot=True, interval=400)
         self._save_timer.timeout.connect(self.save_now)
 
     def changed(self) -> None:
         """Call after every edit: saves soon (batched), and tells the render page."""
+        self.edits += 1
         self._save_timer.start()
         self.edited.emit()
 
     def save_now(self) -> None:
         self._save_timer.stop()
-        book, book_id, source, lock = self.book, self.book_id, self.source, self.lock
+        run_task(lambda _report: self.write(),
+                 on_failed=lambda exc: log.error("Saving the review failed: %s", exc))  # fmt: skip
 
-        def write(_report):
-            with lock:
-                project.save(book, book_id, source=source)
-
-        run_task(write, on_failed=lambda exc: log.error("Saving the review failed: %s", exc))
+    def write(self) -> None:
+        """Worker side of a save: a consistent copy without blocking edits, then write."""
+        for _attempt in range(10):
+            count = self.edits
+            try:
+                data = project.to_dict(self.book)
+            except RuntimeError:  # the book changed shape mid-copy
+                continue
+            if count == self.edits:
+                break
+        else:
+            log.warning("The book kept changing while saving; saved the latest copy")
+        with self.saving:
+            if count > self._written:
+                project.write(data, self.book_id, source=self.source)
+                self._written = count
 
     @property
     def pronunciations_path(self) -> Path:

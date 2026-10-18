@@ -299,6 +299,27 @@ Logged in `benchmarks/history.csv`, CPU provider, af_heart, synthesis only:
   - Linux needs libportaudio2; without it, listening says plainly that sound can't be played.
   - M5 must leave the ASIO builds of PortAudio (`*-asio.dll`) out of the Windows package (Steinberg licence).
 
+### D37. Cleanup and reading fixes from the external review (2026-10-19)
+Every rule that fired on one clue now needs a second clue, or evidence from elsewhere in the book.
+- **Numbered running heads** ("12 THE WISDOM OF LIFE"): the shape must top at least 30% of pages (and 3). Their Roman numeral is all lower or all upper case and not a lone "I", so "I never saw him…" or "Vic …" at the top of a page stay.
+- **Drop caps:** a capital that is a word on its own (English: A, I; in `cleanup/en.py`) keeps its space when the next word occurs elsewhere in the book: "I was", "A long". "T he" and "I t" still join.
+- **Captions:** "Table 2 shows that…" is a sentence, not a caption. After the number, a caption has punctuation, a capital or nothing.
+- **Bookmarks** that point partway down a page start their chapter, and its footnotes, there (XYZ/FitH positions). Whole-page bookmarks work as before.
+- **EPUB:** `<a href="#fn"><sup>1</sup></a>` is a note marker like `<sup><a>`. SVG `<title>` text is a figure removal.
+- **PDF extraction:** text drawn twice ("fake bold") is read once, and pages are closed as they're read.
+- **Reading:**
+  - A Roman numeral reads as "the Nth" after a name only up to 30, so DC, MD, MI, CD and XL stay letters. No numeral is read before a hyphen ("mix-up").
+  - A fraction needs a smaller top and a usual denominator, so "9/11", "24/7" and "50/50" read as two numbers.
+  - "etc.", "a.m.", "p.m.", "A.D." and "B.C." keep their full stop before a new sentence. "Baker St. The" is Street.
+  - With a cue word, any year 1000-2999 is a year ("in 1066", "in 2312").
+  - Proposed rows for `sentences.tsv` are in `tests/voice/sentences.proposed.tsv`, waiting for the owner.
+- **Project Gutenberg markers** are PG's file format, not English rules, so they live in `cleanup/gutenberg.py`.
+- **Checked against the corpus:** removal counts before and after on all 10 corpus books. Two lines changed:
+  - Wisdom of Life's "X SCHOPENHAUER" head stays removed.
+  - Essays of Elia's 8 garbled OCR heads are now labelled multi-column; those pages aren't read either way.
+
+  The golden pages still wait for the owner, so these rules are only covered by unit tests.
+
 ---
 
 ## Dependency log
