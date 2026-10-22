@@ -44,8 +44,8 @@ jobs:
     timeout-minutes: 90
     env:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
-      SIGN: ${{ secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && startsWith(github.ref, 'refs/tags/v') }}
-      PAGEVOICE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      SIGN: ${{ secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+      PAGEVOICE_RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,9 +69,14 @@ jobs:
           enable-cache: true
 
       - name: Build the app (PyInstaller, one folder)
+        shell: bash
         run: |
           uv sync --locked --extra gui --group build
+          uv run python tools/check_licenses.py
           uv run pyinstaller packaging/pagevoice.spec --noconfirm --log-level WARN
+          if find dist/PageVoice -name '*.proposed.json' | grep -q .; then
+            echo "The developer manifest got into the build" >&2; exit 1
+          fi
 
       - name: Self-test the built app
         timeout-minutes: 10
@@ -148,9 +153,11 @@ jobs:
           path: |
             dist/PageVoice-*-setup.exe
             selftest-windows.json
+            selftest-signed.json
+          if-no-files-found: warn
 
       - name: Attach to the GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -162,7 +169,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $file --clobber
           } else {
-            gh release create $tag $file --title "PageVoice $tag" --generate-notes
+            gh release create $tag $file --title "PageVoice $tag" --generate-notes --draft
             # the Linux or sources job may have created the release in the meantime
             if ($LASTEXITCODE -ne 0) { gh release upload $tag $file --clobber }
           }
@@ -175,7 +182,7 @@ jobs:
     permissions:
       contents: write
     env:
-      PAGEVOICE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+      PAGEVOICE_RELEASE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -185,6 +192,7 @@ jobs:
         id: version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-dev.${GITHUB_SHA::7}"; fi
+          [[ "$v" =~ ^[0-9A-Za-z.+-]+$ ]] || { echo "Odd version: $v" >&2; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -206,9 +214,14 @@ jobs:
           enable-cache: true
 
       - name: Build the app (PyInstaller, one folder)
+        shell: bash
         run: |
           uv sync --locked --extra gui --group build
+          uv run python tools/check_licenses.py
           uv run pyinstaller packaging/pagevoice.spec --noconfirm --log-level WARN
+          if find dist/PageVoice -name '*.proposed.json' | grep -q .; then
+            echo "The developer manifest got into the build" >&2; exit 1
+          fi
 
       - name: Self-test the built app
         timeout-minutes: 10
@@ -219,6 +232,12 @@ jobs:
           dist/PageVoice/PageVoice --self-test selftest-linux.json || status=$?
           cat selftest-linux.json
           exit $status
+
+      - name: List the Ubuntu libraries in the build (licences and sources)
+        run: |
+          packaging/linux/system-libs.sh dist/PageVoice > dist/PageVoice/SYSTEM_LIBRARIES.txt
+          cp dist/PageVoice/SYSTEM_LIBRARIES.txt dist/SYSTEM_LIBRARIES.txt
+          cat dist/SYSTEM_LIBRARIES.txt
 
       - name: Build the AppImage
         env:
@@ -244,11 +263,12 @@ jobs:
           name: PageVoice-linux
           path: |
             dist/PageVoice-*-x86_64.AppImage
+            dist/SYSTEM_LIBRARIES.txt
             selftest-linux.json
             selftest-appimage.json
 
       - name: Attach to the GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -256,10 +276,11 @@ jobs:
           tag="$TAG"
           file=$(ls dist/PageVoice-*-x86_64.AppImage)
           if gh release view "$tag" > /dev/null 2>&1; then
-            gh release upload "$tag" "$file" --clobber
+            gh release upload "$tag" "$file" dist/SYSTEM_LIBRARIES.txt --clobber
           else
-            gh release create "$tag" "$file" --title "PageVoice $tag" --generate-notes \
-              || gh release upload "$tag" "$file" --clobber
+            gh release create "$tag" "$file" dist/SYSTEM_LIBRARIES.txt --title "PageVoice $tag" \
+              --generate-notes --draft \
+              || gh release upload "$tag" "$file" dist/SYSTEM_LIBRARIES.txt --clobber
           fi
 
   sources:
@@ -290,13 +311,29 @@ jobs:
           path: dist/sources
 
       - name: Attach to the GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           tag="$TAG"
           if ! gh release view "$tag" > /dev/null 2>&1; then
-            gh release create "$tag" --title "PageVoice $tag" --generate-notes || true
+            gh release create "$tag" --title "PageVoice $tag" --generate-notes --draft || true
           fi
           gh release upload "$tag" dist/sources/* --clobber
+
+  publish:
+    # The release stays a draft until the Windows, Linux and sources jobs have all
+    # succeeded, so a half-finished release page never appears.
+    needs: [windows, linux, sources]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

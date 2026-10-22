@@ -33,22 +33,34 @@ def native() -> list[tuple[str, str, str]]:
     import soundfile
     from PySide6 import __version__ as pyside
 
-    qt = f"https://download.qt.io/official_releases/qt/{'.'.join(pyside.split('.')[:2])}"
+    series = ".".join(pyside.split(".")[:2])
+    sndfile = soundfile.__libsndfile_version__
     return [
         ("ffmpeg 8.1.3 (LGPL-only build)", "LGPL-2.1-or-later",
          "ffmpeg-8.1.3.tar.xz, attached to each release"),
-        ("LAME 3.100 (inside ffmpeg)", "LGPL-2.0-or-later",
+        ("LAME 3.100 (inside ffmpeg, and inside libsndfile)", "LGPL-2.0-or-later",
          "lame-3.100.tar.gz, attached to each release"),
         ("espeak-ng 1.52.0 (inside espeakng-loader)", "GPL-3.0-or-later",
          "espeak-ng-1.52.0.tar.gz, attached to each release"),
         (f"Qt {pyside} (inside PySide6-Essentials)", "LGPL-3.0",
-         f"{qt}/{pyside}/single/qt-everywhere-src-{pyside}.tar.xz"),
-        (f"libsndfile {soundfile.__libsndfile_version__} (inside soundfile; on Windows it "
-         "also contains libogg, libvorbis, FLAC, Opus, mpg123 and LAME)", "LGPL-2.1-or-later",
-         f"libsndfile-{soundfile.__libsndfile_version__}.tar.xz, attached to each release"),
-        ("PortAudio v19.7.0 (inside sounddevice)", "MIT",
-         "https://files.portaudio.com/archives/pa_stable_v190700_20210406.tgz"),
+         f"https://download.qt.io/archive/qt/{series}/{pyside}/single/"
+         f"qt-everywhere-src-{pyside}.tar.xz"),
+        (f"PySide6 and shiboken6 {pyside}", "LGPL-3.0",
+         f"pyside-setup-everywhere-src-{pyside}.tar.xz, attached to each release"),
+        (f"libsndfile {sndfile} (inside soundfile)", "LGPL-2.1-or-later",
+         f"libsndfile-{sndfile}.tar.xz, attached to each release"),
+        ("mpg123 1.33.4 (inside libsndfile)", "LGPL-2.1",
+         "mpg123-1.33.4.tar.bz2, attached to each release"),
+        ("libogg 1.3.6, libvorbis 1.3.7, FLAC 1.5.0, Opus 1.5.2 (inside libsndfile)",
+         "BSD-3-Clause", "https://xiph.org/downloads/ and https://opus-codec.org/"),
+        ("PortAudio v19.7.0 on Windows (inside sounddevice); v19.6.0 in the Linux AppImage "
+         "(Ubuntu 22.04's libportaudio2, see SYSTEM_LIBRARIES.txt)", "MIT",
+         "https://github.com/PortAudio/portaudio"),
     ]  # fmt: skip
+
+
+# Copyleft packages with no source archive on PyPI, and where their source is instead.
+NO_SDIST = {"pyside6-essentials", "shiboken6"}  # pyside-setup-everywhere-src, attached
 
 
 LICENSE_FILE = re.compile(r"(^|/)(licen[cs]e|copying|notice|authors)[^/]*$", re.I)
@@ -156,7 +168,9 @@ def sources(folder: str) -> int:
         name, version = dist.metadata["Name"], dist.version
         sdist = locked.get(_norm(name), {}).get("sdist")
         if not sdist:
-            notes.append(f"{name} {version} ({licence}): no source archive on PyPI; see below.")
+            if _norm(name) not in NO_SDIST:  # its source would ship nowhere: stop
+                raise SystemExit(f"{name} is {licence} but has no source archive in uv.lock")
+            notes.append(f"{name} {version} ({licence}): in pyside-setup-everywhere-src.")
             continue
         file = out / sdist["url"].rsplit("/", 1)[-1]
         if not file.is_file():
@@ -166,18 +180,13 @@ def sources(folder: str) -> int:
             file.unlink()
             raise SystemExit(f"{file.name} doesn't match uv.lock's SHA-256")
         notes.append(f"{name} {version} ({licence}): {file.name}")
-    from PySide6 import __version__ as pyside
-
-    notes += ["", "Not attached (large); the exact source on its project's official servers:"]
-    for name, _licence, source in native():
-        if source.startswith("http"):
-            notes.append(f"  {name}: {source}")
-    notes.append(
-        "  PySide6 / shiboken6 "
-        f"{pyside}: https://download.qt.io/official_releases/QtForPython/pyside6/"
-        f"PySide6-{pyside}-src/pyside-setup-everywhere-src-{pyside}.tar.xz"
-    )
-    notes += ["", "Attached by packaging/sources.sh: ffmpeg, LAME, espeak-ng, libsndfile."]
+    notes += ["", "Not attached (about 1 GB); the exact source on Qt's long-term archive:"]
+    notes += [f"  {name}: {source}" for name, _l, source in native() if "archive" in source]
+    notes += [
+        "",
+        "Also attached (packaging/sources.sh): ffmpeg, LAME, espeak-ng, libsndfile, "
+        "mpg123, pyside-setup; and SYSTEM_LIBRARIES.txt for the Linux AppImage.",
+    ]
     (out / "SOURCES.txt").write_text("\n".join(notes) + "\n", encoding="utf-8")
     print(f"{len(notes)} lines -> {out / 'SOURCES.txt'}")
     return 0
