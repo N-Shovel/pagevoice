@@ -5,7 +5,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Last updated:** 2026-10-22
 - **Milestone:** M5, release builds. PR #15 (first version) and #16 (TXT title) are merged; the M5 spec-review fixes sit on branch `m5-review-fixes`, not yet in a PR.
 - **Branch:** m5-review-fixes
-- **State:** paused (usage, about 97%). The other states are: not started, working, waiting for owner, done.
+- **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
   1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
   2. Add a Listen feature: play rendered chapters in the app (pause, seek, listen from a paragraph). Playback through sounddevice (proposed; license check first).
