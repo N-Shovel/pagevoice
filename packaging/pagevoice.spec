@@ -36,6 +36,17 @@ for package in ("misaki", "espeakng_loader", "en_core_web_sm", "spacy", "thinc",
 # The model manifest. Never the proposed one: the installed app uses our release (D9).
 datas += collect_data_files("pagevoice", excludes=["**/*.proposed.json"])
 
+# Linux: PortAudio is a system library (libportaudio2); bundle it explicitly, next to the
+# app, where pagevoice.render.playback finds it (users may not have it installed).
+if OS == "linux":
+    _portaudio = sorted(
+        p for d in ("/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib64", "/usr/lib")
+        for p in Path(d).glob("libportaudio.so.2*") if p.is_file()
+    )  # fmt: skip
+    if not _portaudio:
+        raise SystemExit("libportaudio2 isn't installed on the build machine")
+    binaries += [(str(_portaudio[0]), ".")]
+
 # ffmpeg and its licences: find_ffmpeg() looks in <bundle>/ffmpeg/ (D18).
 binaries += [(str(FFMPEG / "bin" / FFMPEG_EXE), "ffmpeg")]
 datas += [(str(p), "licenses/ffmpeg") for p in (FFMPEG / "licenses").glob("*") if p.is_file()]

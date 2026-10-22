@@ -80,9 +80,11 @@ def _ffmpeg() -> str:
 
 
 def _sound() -> str:
-    import sounddevice
+    from pagevoice.render.playback import bundled_portaudio, import_sounddevice
 
-    return sounddevice.get_portaudio_version()[1]
+    version = import_sounddevice().get_portaudio_version()[1]
+    bundled = bundled_portaudio()
+    return f"{version} ({'bundled ' + bundled.name if bundled else 'from the package'})"
 
 
 def _readers() -> str:

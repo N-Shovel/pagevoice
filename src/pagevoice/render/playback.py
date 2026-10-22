@@ -9,11 +9,14 @@ sounddevice (the gui extra) is imported only when a stream is opened; the output
 can be replaced in tests.
 """
 
+import ctypes.util
 import logging
+import sys
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -36,10 +39,42 @@ class Position:
     total: float  # chapter length so far known (rendered paragraphs and pauses)
 
 
+def bundled_portaudio() -> Path | None:
+    """PortAudio inside a packaged Linux build (Windows wheels carry their own copy)."""
+    bundle = getattr(sys, "_MEIPASS", None)
+    if not getattr(sys, "frozen", False) or not bundle or sys.platform == "win32":
+        return None
+    return next(iter(sorted(Path(bundle).glob("libportaudio.so*"))), None)
+
+
+def import_sounddevice():
+    """Import sounddevice, finding the bundled PortAudio in a packaged Linux build.
+
+    sounddevice looks for PortAudio with ctypes.util.find_library, which searches the
+    system, never the app's own folder; on a machine without libportaudio2 it would fail.
+    """
+    bundled = bundled_portaudio()
+    if bundled is None:
+        import sounddevice
+
+        return sounddevice
+    system_find = ctypes.util.find_library
+
+    def find(name: str):
+        return str(bundled) if name == "portaudio" else system_find(name)
+
+    ctypes.util.find_library = find
+    try:
+        import sounddevice
+    finally:
+        ctypes.util.find_library = system_find
+    return sounddevice
+
+
 def open_stream():
     """The default sound output, mono at Kokoro's rate."""
     try:
-        import sounddevice
+        sounddevice = import_sounddevice()
     except (ImportError, OSError) as exc:  # Linux without libportaudio2, for example
         raise PlaybackUnavailable(
             "Sound can't be played here: the audio library (PortAudio) is missing."
