@@ -48,6 +48,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#Root}\dist\PageVoice\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; An upgrade replaces the program files completely, so an older version's libraries can't
+; linger next to the new ones. User data lives elsewhere and is untouched.
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Icons]
 Name: "{group}\PageVoice"; Filename: "{app}\PageVoice.exe"
 Name: "{group}\Uninstall PageVoice"; Filename: "{uninstallexe}"

@@ -10,6 +10,7 @@ No network, no voice model needed (it isn't bundled: it's downloaded on first ru
 
 import importlib
 import json
+import os
 import tempfile
 import time
 import traceback
@@ -18,12 +19,19 @@ from pathlib import Path
 
 
 def _g2p() -> str:
+    """Dictionary words go through misaki and spaCy; names it doesn't know (Siobhan,
+    Nguyen) go to espeak-ng. Both must work: a build without espeak-ng's data would leave
+    every unknown name silent."""
     from pagevoice.voice.g2p import g2p_for
+    from pagevoice.voice.g2p_en import UNKNOWN
 
-    phonemes = g2p_for("en")("The lighthouse keeper read the letter in 1945.")
-    if not phonemes.strip():
-        raise RuntimeError("no phonemes")
-    return phonemes[:40]
+    g2p = g2p_for("en")
+    known = g2p("The lighthouse keeper read the letter in nineteen forty-five.")
+    unknown = g2p("Siobhan Nguyen met Xiomara.")
+    for text, phonemes in (("dictionary words", known), ("unknown names", unknown)):
+        if not phonemes.strip() or UNKNOWN in phonemes or g2p.last_warning:
+            raise RuntimeError(f"G2P failed on {text}: {phonemes!r} {g2p.last_warning}")
+    return f"{known[:20]}… / {unknown[:20]}…"
 
 
 def _normalize() -> str:
@@ -53,13 +61,22 @@ def _flac() -> str:
 
 
 def _ffmpeg() -> str:
-    import subprocess
+    """Encode a moment of silence the way export does: AAC in an M4B (ipod muxer) and
+    MP3 (LAME), with the bundled binary. Its version line alone proves too little."""
+    import numpy as np
+    import soundfile
 
-    from pagevoice.export.ffmpeg import find_ffmpeg
+    from pagevoice.export.ffmpeg import find_ffmpeg, run
 
-    path = find_ffmpeg()
-    out = subprocess.run([str(path), "-hide_banner", "-version"], capture_output=True, text=True)
-    return f"{path.name}: {out.stdout.splitlines()[0] if out.stdout else out.returncode}"
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp) / "in.flac"
+        soundfile.write(str(source), np.zeros(2400, dtype=np.float32), 24000, format="FLAC")
+        for out, codec, muxer in (("a.m4b", "aac", "ipod"), ("a.mp3", "libmp3lame", "mp3")):
+            target = Path(tmp) / out
+            run(["-i", str(source), "-c:a", codec, "-b:a", "64k", "-f", muxer, str(target)])
+            if not target.is_file() or target.stat().st_size < 100:
+                raise RuntimeError(f"ffmpeg wrote no {out}")
+    return f"{find_ffmpeg().name}: M4B and MP3 encoded"
 
 
 def _sound() -> str:
@@ -91,8 +108,14 @@ CHECKS: dict[str, Callable[[], str]] = {
     "readers": _readers,
     "manifest": _manifest,
 }
-# Allowed to fail before the owner publishes the voice release (model_manifest.json).
+# Allowed to fail before the owner publishes the voice release, except in a release
+# build (PAGEVOICE_RELEASE=1, set for version tags): an installer whose first-run download
+# can't work must never be published.
 PENDING_OWNER = {"manifest"}
+
+
+def _waived() -> set[str]:
+    return set() if os.environ.get("PAGEVOICE_RELEASE") == "1" else PENDING_OWNER
 
 
 def run(extra: dict[str, Callable[[], str]] | None = None) -> dict:
@@ -108,7 +131,7 @@ def run(extra: dict[str, Callable[[], str]] | None = None) -> dict:
             "detail": detail,
             "seconds": round(time.perf_counter() - started, 2),
         }
-    failed = [n for n, r in results.items() if not r["ok"] and n not in PENDING_OWNER]
+    failed = [n for n, r in results.items() if not r["ok"] and n not in _waived()]
     return {"passed": not failed, "failed": failed, "checks": results}
 
 

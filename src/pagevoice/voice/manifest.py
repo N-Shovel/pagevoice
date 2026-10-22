@@ -5,6 +5,7 @@
 """
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,7 +70,12 @@ def _entry(raw: dict) -> FileEntry:
 
 
 def load_manifest(path: Path | None = None, *, allow_proposed: bool = False) -> Manifest:
-    """Read the manifest. With allow_proposed, fall back to the proposed one if needed."""
+    """Read the manifest. With allow_proposed, fall back to the proposed one if needed.
+
+    The installed (frozen) app never uses the proposed manifest, whatever it's asked (D9):
+    its download comes from our release, checked against the real manifest."""
+    if getattr(sys, "frozen", False):
+        allow_proposed = False
     if path is None:
         path = MANIFEST
         if not path.exists() and allow_proposed:

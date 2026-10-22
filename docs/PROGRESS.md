@@ -3,9 +3,9 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-22
-- **Milestone:** M5, release builds (branch `m5-release`). M0–M4 and the review fixes are merged (#11–#14).
-- **Branch:** m5-release
-- **State:** working. The other states are: not started, working, waiting for owner, done.
+- **Milestone:** M5, release builds. PR #15 (first version) and #16 (TXT title) are merged; the M5 spec-review fixes sit on branch `m5-review-fixes`, not yet in a PR.
+- **Branch:** m5-review-fixes
+- **State:** paused (usage, about 97%). The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
   1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
   2. Add a Listen feature: play rendered chapters in the app (pause, seek, listen from a paragraph). Playback through sounddevice (proposed; license check first).
@@ -57,18 +57,35 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The spec-review fixes are in D34.
 
 ## In progress
-- **M5 on `m5-release`** (see D38):
-  - PyInstaller one-folder app, with `--self-test`. It passes locally on Windows; only the voice manifest is missing, which is the owner's item.
-  - Inno Setup installer and AppImage scripts.
-  - The release workflow: tag → builds, self-tests, sources and licences → one release. SignPath switches on when set up.
-  - PyInstaller is in the `build` group, in `REVIEWED` because its metadata says "GPLv2"; its real licence is GPL-2.0-or-later with the bootloader exception.
-- **Fast tests:** 334 passed, 1 skipped.
+- **M5 merged (#15) at its first version.**
+  - The release workflow built and self-tested both apps on CI: the Windows installer (`PageVoice-0.0.0-dev.da72b2b-setup.exe`) and the AppImage.
+  - Only the voice-manifest check failed, as expected (owner item).
+- **Spec-review fixes for M5 on `m5-review-fixes`** (commit "wip: M5 review fixes"), not yet in a PR. Lint, formatting and 335 fast tests pass. A local Windows rebuild passes its self-test.
+  - Violation 1: tag builds set `PAGEVOICE_RELEASE=1`, which makes a missing voice manifest fail the release.
+  - Violation 2: copyleft sources.
+    - `tools/third_party.py --sources` downloads the GPL/LGPL/MPL package sources from uv.lock (SHA-256 checked) and writes SOURCES.txt with the exact Qt and PySide6 links.
+    - `sources.sh` adds libsndfile 1.2.2.
+    - The LGPL-2.1, LGPL-3.0 and MPL-2.0 texts are vendored in `packaging/licenses/` and appended to THIRD_PARTY_LICENSES.
+  - Violation 3: the ffmpeg check really encodes an M4B (aac/ipod) and an MP3 (LAME); the G2P check also runs espeak-ng on unknown names.
+  - Concerns fixed:
+    - signing only for `v*` tags and only when both SignPath settings exist; a self-test after signing
+    - the frozen app ignores the proposed manifest and the upstream source (manifest.py, download.py), and the proposed manifest isn't bundled
+    - `disable_windowed_traceback` and job/step timeouts
+    - Inno Setup pinned to 6.7.1, and `[InstallDelete]` for `_internal`
+    - tag and version passed through `env:`
+    - spaCy and thinc test suites and ONNX Runtime tools excluded
+    - Linux installs the X11 (xcb) libraries before building and runs the AppImage self-test under `xvfb-run` with `QT_QPA_PLATFORM=xcb`, after removing the system PortAudio
+  - Not done:
+    - signing Inno Setup's uninstaller (needs SignPath set up: `SignTool=` plus `SignedUninstaller=yes`)
+    - least-privilege job permissions (accepted as is)
+- **Not run yet on CI:** the new Linux X11/AppImage self-test and the reordered sources job. Expect possible fixes there.
+- **Lesson:** don't switch branches in this folder while a reviewer agent reads it; use a worktree.
 
 ## Next step
-1. Open the M5 PR and fix whatever the release workflow's Linux build or AppImage self-test shows (it can't be built locally).
-2. Run the spec-reviewer for M5.
-3. Once the owner has published the voice release: install a test build on a clean machine, end to end (first-run download, render, listen, export).
-4. Then a `v1.0.0` tag, but only with the owner's OK.
+1. Open a PR from `m5-review-fixes` and watch the Release workflow, especially the Linux AppImage self-test under xvfb without system PortAudio, and the sources job. Fix what fails.
+2. Re-run the spec-reviewer on that branch to cover what it couldn't read last time: `tests/test_selftest.py`, the pyproject build group, and the REVIEWED entry in `tools/check_licenses.py`.
+3. Update D38 for the review fixes, including the Qt-source decision: exact-version links to download.qt.io instead of attaching ~1 GB of source.
+4. Then wait for the owner: the voice release (the real voice manifest), listening, golden pages, and SignPath. Only then a `v1.0.0` tag, with the owner's OK.
 
 ## Waiting on the owner
 - **For the first release:** publish the voice files (model manifest), listen, check the golden pages, and apply to SignPath (approval can take weeks). D38 lists the SignPath names the workflow expects.

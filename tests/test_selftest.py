@@ -32,5 +32,18 @@ def test_the_voice_manifest_may_wait_for_the_owner(monkeypatch):
         raise FileNotFoundError("voice manifest")
 
     monkeypatch.setattr(selftest, "CHECKS", {"manifest": missing})
+    monkeypatch.delenv("PAGEVOICE_RELEASE", raising=False)
     report = selftest.run()
     assert report["passed"] and not report["checks"]["manifest"]["ok"]
+
+
+def test_a_release_build_needs_the_voice_manifest(monkeypatch):
+    """Review violation 1: a tagged release whose app can never get its voice must fail."""
+
+    def missing():
+        raise FileNotFoundError("voice manifest")
+
+    monkeypatch.setattr(selftest, "CHECKS", {"manifest": missing})
+    monkeypatch.setenv("PAGEVOICE_RELEASE", "1")
+    report = selftest.run()
+    assert not report["passed"] and report["failed"] == ["manifest"]
