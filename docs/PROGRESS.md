@@ -79,7 +79,7 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Fast tests:** 345 passed, 1 skipped.
 
 ## Next step
-1. Watch PR #18's checks after the last push. Once green, M5's code is done.
+1. PR #18 is green on all checks (Release, CI, benchmark, ffmpeg); the owner merges. Then M5's code is done.
 2. Then the owner's items before `v1.0.0`:
    - the voice release (real manifest)
    - listening
@@ -122,6 +122,10 @@ Claude Code keeps this file current. It updates it after every finished step and
 - **Installer size:** the G2P stack (spaCy + English model + espeak-ng) is well over the skill's ~20 MB line for runtime packages. SPEC O1 expected this, but it needs the owner's OK.
 
 ## Notes for next time
+- **AppImage, to check on the clean Ubuntu 22.04 VM** (SYSTEM_LIBRARIES.txt shows it):
+  - Qt's GTK3 theme plugin pulls GTK, cairo and pango into the bundle.
+  - PyInstaller also copies `libstdc++`, `libgcc_s` and glibc's `libmvec`.
+  - Bundling those core libraries can break on newer distros. If the VM test or a newer distro shows trouble, leave out the GTK3 platform theme and those core libraries (the AppImage excludelist).
 - **GUI screenshots:** run with `QT_QPA_PLATFORM=offscreen` and `QT_QPA_FONTDIR=C:/Windows/Fonts` (without fonts, the offscreen platform draws boxes), then save `window.grab()`.
 - **Cleanup, seen in review:** in trap-lantern chapter I, the subtitle joins the first line ("The Tower Stood on a ledge…"). It's M1 cleanup, so check it against the golden pages.
 - **Status line (README step 7):** no state file appeared in this client (the VS Code chat panel), so the 90% pause doesn't fire here. Use `claude` in VS Code's terminal for long runs. PROGRESS.md and "continue" still work.
