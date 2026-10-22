@@ -29,26 +29,39 @@ ALLOW = re.compile(
     re.IGNORECASE,
 )
 # GPL version 2 *only* can't be combined with a GPL-3.0 program. "or later" is fine.
+# GPL version 2 *only* can't be combined with a GPL-3.0 program; "or later" is fine.
+# Not the LGPL: an "L" or "Lesser" in front means the Lesser GPL, which is compatible.
+# A bare "GPL-2.0"/"GPL-2" is the old SPDX name for 2.0-only.
 GPL2_ONLY = re.compile(
-    r"gpl-?2(\.0)?-only|gplv2(?!\+)|\bv2 \(gplv2\)|general public license,? v(ersion )?2\b",
+    r"(?<![l\w])gpl-?2(\.0)?(-only)?\b(?![-.]?\d|\s*\+|-or-later)"
+    r"|(?<![l\w])gplv2\b(?!\s*\+)"
+    r"|(?<!lesser )(?<!library )general public license,? v(ersion )?2\b(?!\.1|\s*\+| or later)",
     re.IGNORECASE,
 )
-OR_LATER = re.compile(r"or[- ]later|\+|v2 or later", re.IGNORECASE)
 GPL2_ONLY_WARNING = "GPL-2.0-only can't be combined with GPL-3.0"
+
+
+def _part(text: str) -> str:
+    """One licence of an AND expression: 'gpl2-only', 'ok' or 'unknown'."""
+    if GPL2_ONLY.search(text):
+        return "gpl2-only"
+    return "ok" if ALLOW.search(text) else "unknown"
 
 
 def verdict(license_: str) -> str:
     """'ok', 'deny' or 'unknown' for one package's license text.
 
-    "A OR B" offers a choice: the package is fine if any one alternative is."""
+    "A OR B" offers a choice: fine if any one alternative is. "A AND B" applies both:
+    fine only if every part is."""
     if DENY.search(license_):
         return "deny"
     choices = [c.strip() for c in re.split(r"\s+OR\s+|;", license_) if c.strip()]
     results = []
     for choice in choices or [license_]:
-        if GPL2_ONLY.search(choice) and not OR_LATER.search(choice):
+        parts = [_part(p) for p in re.split(r"\s+AND\s+", choice) if p.strip()]
+        if "gpl2-only" in parts:
             results.append("gpl2-only")
-        elif ALLOW.search(choice):
+        elif parts and all(r == "ok" for r in parts):
             results.append("ok")
         else:
             results.append("unknown")
@@ -67,6 +80,10 @@ REVIEWED: dict[str, str] = {
     # Build tool (the "build" group). Classifier says "GPLv2"; the real terms (COPYING.txt
     # and PyPI's license field) are GPL-2.0-or-later plus the bootloader exception, which
     # allows shipping its launcher with any program. Reviewed 2026-10-22.
+    # Runtime (misaki, phonemizer-fork). New code Apache-2.0; parts derived from Python's
+    # own regex engine under CNRI-Python, the Python 1.6.1 licence that CNRI amended to be
+    # GPL-compatible (FSF lists it as compatible). Reviewed 2026-10-22.
+    "regex": "Apache-2.0 AND CNRI-Python (Python 1.6.1 licence, GPL-compatible)",
     "pyinstaller": "GPL-2.0-or-later WITH Bootloader-exception",
     "pyinstaller-hooks-contrib": "GPL-2.0-or-later OR Apache-2.0 (runtime hooks Apache-2.0)",
 }

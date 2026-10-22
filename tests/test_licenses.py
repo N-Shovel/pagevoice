@@ -24,6 +24,18 @@ _spec.loader.exec_module(check)
         ("GNU General Public License v2 (GPLv2)", "deny"),
         ("AGPL-3.0", "deny"),
         ("Creative Commons Non-Commercial", "deny"),
+        # The Lesser GPL is fine, any version.
+        ("GNU Lesser General Public License v2 (LGPLv2)", "ok"),
+        ("LGPL-2.0-only", "ok"),
+        ("LGPL-2.1-only", "ok"),
+        ("GNU General Public License v2 or later (GPLv2+)", "ok"),
+        ("GPL-2.0+", "ok"),
+        # Bare SPDX "GPL-2.0" / "GPL-2" mean 2.0-only.
+        ("GPL-2.0", "deny"),
+        ("GPL-2", "deny"),
+        # AND: every part must pass, and "or later" elsewhere doesn't rescue it.
+        ("GPL-2.0-only AND LGPL-2.1-or-later", "deny"),
+        ("MIT AND BSD-3-Clause", "ok"),
         ("", "unknown"),
         ("Some Custom License", "unknown"),
     ],

@@ -166,3 +166,19 @@ def test_no_sound_output_is_a_plain_message(renderer):
     player.play()
     player.wait(5)
     assert ended == ["No sound output was found on this computer."]
+
+
+def test_packaged_linux_build_uses_its_own_portaudio(tmp_path, monkeypatch):
+    """CI found it: in a packaged Linux build, sounddevice searched the system for
+    PortAudio, never the app's folder, so a machine without libportaudio2 had no sound."""
+    import sys
+
+    from pagevoice.render import playback
+
+    (tmp_path / "libportaudio.so.2").write_bytes(b"")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert playback.bundled_portaudio() == tmp_path / "libportaudio.so.2"
+    monkeypatch.setattr(sys, "platform", "win32")  # Windows wheels carry their own
+    assert playback.bundled_portaudio() is None

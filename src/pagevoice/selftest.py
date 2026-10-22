@@ -23,15 +23,19 @@ def _g2p() -> str:
     Nguyen) go to espeak-ng. Both must work: a build without espeak-ng's data would leave
     every unknown name silent."""
     from pagevoice.voice.g2p import g2p_for
-    from pagevoice.voice.g2p_en import UNKNOWN
 
     g2p = g2p_for("en")
-    known = g2p("The lighthouse keeper read the letter in nineteen forty-five.")
-    unknown = g2p("Siobhan Nguyen met Xiomara.")
-    for text, phonemes in (("dictionary words", known), ("unknown names", unknown)):
-        if not phonemes.strip() or UNKNOWN in phonemes or g2p.last_warning:
-            raise RuntimeError(f"G2P failed on {text}: {phonemes!r} {g2p.last_warning}")
-    return f"{known[:20]}… / {unknown[:20]}…"
+    results = []
+    for what, text in (
+        ("dictionary words", "The lighthouse keeper read the letter in nineteen forty-five."),
+        ("unknown names", "Siobhan Nguyen met Xiomara."),
+    ):
+        phonemes = g2p(text)
+        # last_warning describes this call only: check it before the next one.
+        if not phonemes.strip() or g2p.last_warning:
+            raise RuntimeError(f"G2P failed on {what}: {phonemes!r} {g2p.last_warning}")
+        results.append(phonemes[:20])
+    return " / ".join(f"{r}…" for r in results)
 
 
 def _normalize() -> str:
@@ -80,9 +84,11 @@ def _ffmpeg() -> str:
 
 
 def _sound() -> str:
-    import sounddevice
+    from pagevoice.render.playback import bundled_portaudio, import_sounddevice
 
-    return sounddevice.get_portaudio_version()[1]
+    version = import_sounddevice().get_portaudio_version()[1]
+    bundled = bundled_portaudio()
+    return f"{version} ({'bundled ' + bundled.name if bundled else 'from the package'})"
 
 
 def _readers() -> str:
