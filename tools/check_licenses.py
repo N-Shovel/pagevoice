@@ -64,6 +64,11 @@ def verdict(license_: str) -> str:
 REVIEWED: dict[str, str] = {
     # PyPI metadata is empty. The repo LICENSE is MIT; it bundles espeak-ng (GPL-3.0+).
     "espeakng-loader": "MIT (bundles espeak-ng, GPL-3.0-or-later)",
+    # Build tool (the "build" group). Classifier says "GPLv2"; the real terms (COPYING.txt
+    # and PyPI's license field) are GPL-2.0-or-later plus the bootloader exception, which
+    # allows shipping its launcher with any program. Reviewed 2026-10-22.
+    "pyinstaller": "GPL-2.0-or-later WITH Bootloader-exception",
+    "pyinstaller-hooks-contrib": "GPL-2.0-or-later OR Apache-2.0 (runtime hooks Apache-2.0)",
 }
 # This project itself (GPL-3.0).
 SELF = {"pagevoice"}

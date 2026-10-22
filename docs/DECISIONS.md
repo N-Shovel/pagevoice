@@ -320,6 +320,34 @@ Every rule that fired on one clue now needs a second clue, or evidence from else
 
   The golden pages still wait for the owner, so these rules are only covered by unit tests.
 
+### D38. How releases are built (M5, 2026-10-22)
+- **App:** PyInstaller in one-folder mode (`packaging/pagevoice.spec`, never one-file).
+  - Bundled: spaCy and its English model, misaki, espeak-ng, ONNX Runtime, Qt, PortAudio and libsndfile, the LGPL ffmpeg, the icon, `LICENSE` and `THIRD_PARTY_LICENSES.txt`.
+  - Left out: PortAudio's ASIO builds (Steinberg licence, D36), other platforms' libraries, unused Qt modules, and every test, build and round-trip tool.
+  - The voice model is never bundled. It's downloaded on first run from our release (D9).
+  - About 440 MB unpacked on Windows.
+- **Self-test:** `PageVoice --self-test REPORT` checks, in the built app itself:
+  - normalization, the G2P (spaCy model, misaki data, espeak-ng), ONNX Runtime and FLAC
+  - the bundled ffmpeg, the sound library, the PDF and EPUB readers, and Qt
+  - the voice manifest
+
+  CI runs it on both builds and on the AppImage. It already caught one real gap: `language_tags` data missing, which would have broken every render. The manifest check may fail until the owner publishes `model_manifest.json`.
+- **Windows:** an Inno Setup installer (`packaging/windows/pagevoice.iss`).
+  - Per-user by default, with no administrator prompt; "all users" is offered.
+  - Start-menu entry, optional desktop icon, uninstaller.
+  - The user's voice, cache, reviews and lists are never removed.
+- **Linux:** an AppImage built on ubuntu-22.04 (`packaging/linux/build-appimage.sh`). appimagetool 1.9.1 and the type2 runtime 20251108 are pinned by SHA-256.
+- **Release workflow** (`.github/workflows/release.yml`), mirroring folder-tracker:
+  - A `v*` tag builds ffmpeg (through the ffmpeg workflow), the Windows and Linux apps and the sources, and all three jobs attach to one release, handling the create race.
+  - Pull requests that touch packaging build and self-test without releasing.
+- **Signing:** SignPath signs the app folder, then the installer, when `SIGNPATH_API_TOKEN` and `SIGNPATH_ORGANIZATION_ID` exist. The owner sets up project `pagevoice`, policy `release-signing` and artifact configurations `app-folder` and `installer`. Until then, releases are unsigned.
+- **Sources and licences:** every release carries:
+  - the exact source of ffmpeg 8.1.3, LAME 3.100 and espeak-ng 1.52.0 (espeakng-loader builds it unmodified from that tag), pinned by SHA-256 (`packaging/sources.sh`)
+  - `THIRD_PARTY_LICENSES.txt`: the 88 runtime packages with their licence texts, plus the native libraries (`tools/third_party.py`)
+
+  Qt, libsndfile and PortAudio are listed with their upstream source links.
+- **Icon:** a simple placeholder drawn in code (`packaging/icons/`): an open book with sound waves. The owner may replace it.
+
 ---
 
 ## Dependency log
@@ -349,3 +377,4 @@ Every package added to the project, with its license, checked by `tools/check_li
 | 2026-10-16 | mutagen | GPL-2.0-or-later | dev | Reads back M4B chapters and tags and MP3 ID3 tags in `tests/test_export.py`; the bundled ffmpeg has no ffprobe or AAC/MP3 decoders. Never shipped |
 | 2026-10-16 | PySide6-Essentials 6.12 | LGPL-3.0 (or GPL-2.0/3.0) | gui extra | The desktop app (D2). The Essentials subset (QtCore, QtGui, QtWidgets) without the add-on modules; pulls in shiboken6 (same licence). About 209 MB installed; the M5 build keeps only the Qt libraries used |
 | 2026-10-19 | sounddevice 0.5 | MIT (pulls cffi MIT-0, pycparser BSD-3-Clause; bundles PortAudio, MIT-style) | gui extra | Playing rendered chapters in the app (D36). The wheel also carries ASIO builds of PortAudio (`*-asio.dll`): ASIO is under Steinberg's own licence, so M5 must leave those files out of the build. Linux uses the system's libportaudio2 |
+| 2026-10-22 | pyinstaller 6.22 (+ pyinstaller-hooks-contrib) | GPL-2.0-or-later with the bootloader exception (hooks: GPL-2.0-or-later or Apache-2.0) | build | Makes the one-folder app (SPEC §9). Metadata says only "GPLv2", so both are in `REVIEWED` after checking COPYING.txt; the bootloader exception allows shipping its launcher inside PageVoice |

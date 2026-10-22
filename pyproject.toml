@@ -43,6 +43,10 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
 ]
+# Building the installable app (M5): PyInstaller, one-folder mode only (D-packaging).
+build = [
+    "pyinstaller>=6.10",
+]
 # Dev-only: transcribe rendered audio back for the round-trip check. Never shipped.
 roundtrip = [
     "faster-whisper>=1.1",
