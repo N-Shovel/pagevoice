@@ -2,9 +2,9 @@
 
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
-- **Last updated:** 2026-10-19
-- **Milestone:** after M4: the external review's fixes, then the Listen feature. M0–M4 are done and merged (PRs #8, #9). M5 (installer) comes last.
-- **Branch:** review-reading-cleanup (built on listen-mode)
+- **Last updated:** 2026-10-22
+- **Milestone:** M5, release builds (branch `m5-release`). M0–M4 and the review fixes are merged (#11–#14).
+- **Branch:** m5-release
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
   1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
@@ -57,49 +57,22 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The spec-review fixes are in D34.
 
 ## In progress
-- **PR #11** (`gui-button-fixes`): Pronunciations, Back to review and Continue crashed when clicked; the open page's text was squeezed. Found by the owner. CI passed; waiting to be merged.
-- **Piece 1 = PR #12** (`review-safety-fixes`) (it includes #11 through a merge, so either can merge first):
-  - Findings fixed:
-    - 1: MP3 export only removes files it wrote for the same book (record file `.pagevoice-export.json`)
-    - 2: pronunciation lists are read in Excel's encodings and never saved over when unreadable
-    - 3: an existing M4B is replaced only after asking (`--overwrite` in the CLI)
-    - 4: PDF pages are closed as they're read
-    - 16: mostly-scanned PDFs are refused (80% of pages; a stamp page counts as a scan)
-    - 17: a stale render plan is discarded, and Pronunciations is locked during work
-    - 20: a target locked by a player gets a plain message and no `.part`
-    - 21: CLI `--chapters` keeps the cache
-    - the license checker rejects GPL-2.0-only
-  - Not done: quitting during a render leaves the process alive until the current paragraph ends. Low priority.
-- **Piece 2 = Listen, on `listen-mode`** (PR after #12; see D36):
-  - The engine's `render/playback.py` (timeline and player) and the GUI's Listen bar.
-  - Review's right-click has "Listen from here".
-  - sounddevice is in the `gui` extra, and CI installs libportaudio2.
-- **Piece 3 = review reading and cleanup fixes, on `review-reading-cleanup`** (PR after #13; see D37):
-  - Cleanup findings: 6, 7, 12, 13, 14, 15, 23.
-  - Reading findings: 8, 9, 10, 18, 19.
-  - Other findings:
-    - 5: chapters are streamed to disk
-    - 11: saves never block edits
-    - 22: pronunciation-file comments are kept
-    - the rule gaps (SVG `<title>`; Gutenberg markers moved out of `cleanup/en.py`)
-    - the test that couldn't fail
-- **Not done from the review** (low priority):
-  - quitting during a render keeps the process alive until the paragraph ends
-  - "ER", "ICU" and "WWII" (better as pronunciation entries)
-  - "$0.50" and "007"
-  - EPUB UTF-16
-  - the `.bak` overwrite
-  - the G2P warning race
-  - the preview temp file
-  - the double space in an MP3 name
-- **Fast tests:** 331 passed, 1 skipped. Slow tests: 4 passed.
+- **M5 on `m5-release`** (see D38):
+  - PyInstaller one-folder app, with `--self-test`. It passes locally on Windows; only the voice manifest is missing, which is the owner's item.
+  - Inno Setup installer and AppImage scripts.
+  - The release workflow: tag → builds, self-tests, sources and licences → one release. SignPath switches on when set up.
+  - PyInstaller is in the `build` group, in `REVIEWED` because its metadata says "GPLv2"; its real licence is GPL-2.0-or-later with the bootloader exception.
+- **Fast tests:** 334 passed, 1 skipped.
 
 ## Next step
-1. When the owner merges #11, #12, #13 and this PR: M5 (installer), the last piece.
-   - Remember from D36: leave PortAudio's `*-asio.dll` out of the build.
-   - Attach the pinned sources of espeak-ng, ffmpeg and LAME to each release.
+1. Open the M5 PR and fix whatever the release workflow's Linux build or AppImage self-test shows (it can't be built locally).
+2. Run the spec-reviewer for M5.
+3. Once the owner has published the voice release: install a test build on a clean machine, end to end (first-run download, render, listen, export).
+4. Then a `v1.0.0` tag, but only with the owner's OK.
 
 ## Waiting on the owner
+- **For the first release:** publish the voice files (model manifest), listen, check the golden pages, and apply to SignPath (approval can take weeks). D38 lists the SignPath names the workflow expects.
+- **PyInstaller in `REVIEWED`** (tools/check_licenses.py): the skill asks for the owner's OK. Merging the M5 PR gives it.
 - **Merge, in order:** #11 (buttons), #12 (safety fixes), #13 (Listen), then piece 3. Each builds on the one before; the permission settings don't let Claude merge.
 - **Proposed spoken forms:** `tests/voice/sentences.proposed.tsv` (12 rows from the review). Copy the rows you agree with into `sentences.tsv`.
 - **Model manifest:**

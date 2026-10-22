@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PageVoice
+GenericName=Audiobook maker
+Comment=Turn EPUB, PDF and TXT books into audiobooks, offline
+Exec=PageVoice %f
+Icon=pagevoice
+Terminal=false
+Categories=AudioVideo;Audio;Office;
+MimeType=application/epub+zip;application/pdf;text/plain;
