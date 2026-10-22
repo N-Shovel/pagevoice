@@ -81,7 +81,7 @@ QT_UNUSED = [
 ]  # fmt: skip
 # Never bundled: test and development tools, and the banned PyTorch (D3).
 EXCLUDES = QT_UNUSED + ["torch", "tkinter", "pytest", "faster_whisper", "mutagen",
-                        "reportlab", "pip_licenses", "IPython", "matplotlib",
+                        "reportlab", "pip_licenses", "psutil", "IPython", "matplotlib",
                         # packages' own tests and tools, pulled in by collect_all
                         "spacy.tests", "thinc.tests", "onnxruntime.transformers",
                         "onnxruntime.quantization", "onnxruntime.tools"]  # fmt: skip

@@ -15,12 +15,22 @@ echo "Each package's source: https://launchpad.net/ubuntu/+source/<source>/<vers
 echo "(also: apt-get source <source>=<version> on Ubuntu 22.04)."
 echo
 
+SYSTEM_DIRS=(/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu)
 declare -A seen
 while IFS= read -r -d '' lib; do
   name="$(basename "$lib")"
-  # Where the build machine has it: only libraries that dpkg knows are system ones.
-  owner="$(dpkg -S "*/$name" 2>/dev/null | head -1 || true)"
-  pkg="$(echo "$owner" | head -1 | cut -d: -f1)"
+  # Python extension modules come from wheels (their licences: THIRD_PARTY_LICENSES.txt).
+  case "$name" in *.cpython-*|*.abi3.so) continue ;; esac
+  # A system library is one that exists in Ubuntu's 64-bit library folders; ask dpkg
+  # which package installed that exact file (not any file with the same name).
+  pkg=""
+  for dir in "${SYSTEM_DIRS[@]}"; do
+    path="$(find "$dir" -maxdepth 2 -name "$name" -print -quit 2>/dev/null || true)"
+    [ -n "$path" ] || continue
+    pkg="$(dpkg -S "$(readlink -f "$path")" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+    [ -n "$pkg" ] || pkg="$(dpkg -S "$path" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+    [ -n "$pkg" ] && break
+  done
   [ -n "$pkg" ] || continue
   [ -z "${seen[$pkg]:-}" ] || { seen[$pkg]+=" $name"; continue; }
   seen[$pkg]="$name"
