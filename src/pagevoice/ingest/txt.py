@@ -27,6 +27,11 @@ def read_txt(path: Path, *, language: str | None = None) -> Book:
     )
     rules = rules_for(book.language)
     blocks = [b for b in _BLANK.split(text) if b.strip()]
+    # No "Title:" field: a short first line on its own, with more text after it, is the
+    # title ("THE SWEEPER OF CHEONGUN SECT"), not the file name. It's read as a heading.
+    title_line = None if "Title" in fields else _title_line(blocks)
+    if title_line:
+        book.title = rules.title_case(title_line) if title_line.isupper() else title_line
 
     # Project Gutenberg licence text: kept, but as removals.
     start = next((i for i, b in enumerate(blocks) if gutenberg.START.search(b)), None)
@@ -91,6 +96,9 @@ def read_txt(path: Path, *, language: str | None = None) -> Book:
             continue
         block = _EMPHASIS.sub(r"\1", block)
         single = _one_line(block)
+        if index == 0 and title_line:
+            add(Paragraph.plain(single, location, kind="heading"))
+            continue
         if rules.is_chapter_heading(single):
             current = Chapter(title=single)
             current.paragraphs.append(Paragraph.plain(single, location, kind="heading"))
@@ -104,6 +112,23 @@ def read_txt(path: Path, *, language: str | None = None) -> Book:
     book.chapters = finish_chapters(chapters, front, book.title, rules)
     book.chapters[0].notes[:0] = early_notes
     return book
+
+
+TITLE_MAX = 80  # characters
+TITLE_WORDS = 12
+
+
+def _title_line(blocks: list[str]) -> str | None:
+    """The first block, if it looks like a title: one short line, no sentence punctuation
+    at the end, and more of the book after it."""
+    if len(blocks) < 2 or "\n" in blocks[0].strip():
+        return None
+    line = blocks[0].strip()
+    if len(line) > TITLE_MAX or len(line.split()) > TITLE_WORDS:
+        return None
+    if line[-1] in ".!?,;:\"”’'" or line.startswith(("[", "*")):
+        return None
+    return line
 
 
 def _one_line(block: str) -> str:
