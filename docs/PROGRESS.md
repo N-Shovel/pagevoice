@@ -3,8 +3,8 @@
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
 - **Last updated:** 2026-10-22
-- **Milestone:** M5, release builds. PR #15 (first version) and #16 (TXT title) are merged; the M5 spec-review fixes sit on branch `m5-review-fixes`, not yet in a PR.
-- **Branch:** m5-review-fixes
+- **Milestone:** M5, release builds. #15, #16 and #17 are merged; PR #18 (`m5-linux-portaudio`) carries the rest.
+- **Branch:** m5-linux-portaudio
 - **State:** working. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
   1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
@@ -57,35 +57,37 @@ Claude Code keeps this file current. It updates it after every finished step and
   - The spec-review fixes are in D34.
 
 ## In progress
-- **M5 merged (#15) at its first version.**
-  - The release workflow built and self-tested both apps on CI: the Windows installer (`PageVoice-0.0.0-dev.da72b2b-setup.exe`) and the AppImage.
-  - Only the voice-manifest check failed, as expected (owner item).
-- **Spec-review fixes for M5 on `m5-review-fixes`** (commit "wip: M5 review fixes"), not yet in a PR. Lint, formatting and 335 fast tests pass. A local Windows rebuild passes its self-test.
-  - Violation 1: tag builds set `PAGEVOICE_RELEASE=1`, which makes a missing voice manifest fail the release.
-  - Violation 2: copyleft sources.
-    - `tools/third_party.py --sources` downloads the GPL/LGPL/MPL package sources from uv.lock (SHA-256 checked) and writes SOURCES.txt with the exact Qt and PySide6 links.
-    - `sources.sh` adds libsndfile 1.2.2.
-    - The LGPL-2.1, LGPL-3.0 and MPL-2.0 texts are vendored in `packaging/licenses/` and appended to THIRD_PARTY_LICENSES.
-  - Violation 3: the ffmpeg check really encodes an M4B (aac/ipod) and an MP3 (LAME); the G2P check also runs espeak-ng on unknown names.
-  - Concerns fixed:
-    - signing only for `v*` tags and only when both SignPath settings exist; a self-test after signing
-    - the frozen app ignores the proposed manifest and the upstream source (manifest.py, download.py), and the proposed manifest isn't bundled
-    - `disable_windowed_traceback` and job/step timeouts
-    - Inno Setup pinned to 6.7.1, and `[InstallDelete]` for `_internal`
-    - tag and version passed through `env:`
-    - spaCy and thinc test suites and ONNX Runtime tools excluded
-    - Linux installs the X11 (xcb) libraries before building and runs the AppImage self-test under `xvfb-run` with `QT_QPA_PLATFORM=xcb`, after removing the system PortAudio
-  - Not done:
-    - signing Inno Setup's uninstaller (needs SignPath set up: `SignTool=` plus `SignedUninstaller=yes`)
-    - least-privilege job permissions (accepted as is)
-- **Not run yet on CI:** the new Linux X11/AppImage self-test and the reordered sources job. Expect possible fixes there.
-- **Lesson:** don't switch branches in this folder while a reviewer agent reads it; use a worktree.
+- **PR #18** (`m5-linux-portaudio`): the last M5 fixes.
+  - **Linux AppImage finds its bundled PortAudio.** CI proved it: with the system PortAudio removed, under xvfb with xcb, the self-test reports "bundled libportaudio.so.2".
+  - **D38** brought up to date.
+  - **Second spec review, both violations fixed:**
+    - mpg123 1.33.4 (inside libsndfile) and the PySide/shiboken 6.12.0 source are attached, pinned by SHA-256. Qt's source is linked on download.qt.io/archive.
+    - `packaging/linux/system-libs.sh` lists the Ubuntu libraries in the AppImage (package, version, licence, Launchpad source) into SYSTEM_LIBRARIES.txt, shipped in the AppImage and attached.
+  - **Second spec review, concerns fixed:**
+    - Releases are drafts until a `publish` job, which needs windows, linux and sources to succeed.
+    - Only `push` of a `v*` tag signs, sets release mode or attaches.
+    - A wheel-only copyleft package other than PySide/shiboken stops `--sources`.
+    - `sources.sh` asserts its pins match what's installed.
+    - The GPL-2.0-only rule is fixed both ways (LGPL is fine; bare `GPL-2.0` is denied; AND needs every part). `regex` (Apache-2.0 AND CNRI-Python) is now in `REVIEWED`: the owner's OK is needed, given by merging.
+    - The licence check runs over the build tools in release.yml.
+    - The G2P self-test checks each call.
+    - A build fails if a `*.proposed.json` gets in.
+    - The ffmpeg job has a timeout; the Linux version is validated; the signed self-test report is uploaded.
+  - **Not done:**
+    - sources are collected on Linux only (Windows-only copyleft deps aren't checked; none found)
+    - signing Inno Setup's uninstaller (needs SignPath)
+- **Fast tests:** 345 passed, 1 skipped.
 
 ## Next step
-1. Open a PR from `m5-review-fixes` and watch the Release workflow, especially the Linux AppImage self-test under xvfb without system PortAudio, and the sources job. Fix what fails.
-2. Re-run the spec-reviewer on that branch to cover what it couldn't read last time: `tests/test_selftest.py`, the pyproject build group, and the REVIEWED entry in `tools/check_licenses.py`.
-3. Update D38 for the review fixes, including the Qt-source decision: exact-version links to download.qt.io instead of attaching ~1 GB of source.
-4. Then wait for the owner: the voice release (the real voice manifest), listening, golden pages, and SignPath. Only then a `v1.0.0` tag, with the owner's OK.
+1. Watch PR #18's checks after the last push. Once green, M5's code is done.
+2. Then the owner's items before `v1.0.0`:
+   - the voice release (real manifest)
+   - listening
+   - golden pages
+   - SignPath
+
+   Then a test install on a clean Windows and Ubuntu 22.04 machine: first-run download, render, listen, export.
+3. Tag `v1.0.0` only with the owner's OK.
 
 ## Waiting on the owner
 - **For the first release:** publish the voice files (model manifest), listen, check the golden pages, and apply to SignPath (approval can take weeks). D38 lists the SignPath names the workflow expects.
