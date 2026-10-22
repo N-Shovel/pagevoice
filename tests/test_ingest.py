@@ -758,3 +758,28 @@ def test_bookmark_partway_down_a_page_starts_the_chapter_there(tmp_path):
     assert "LAST paragraph of chapter one" in by_title["One"]
     assert "LAST paragraph of chapter one" not in by_title["Two"]
     assert "Chapter two begins halfway down the page." in by_title["Two"]
+
+
+@pytest.mark.parametrize(
+    ("text", "title"),
+    [
+        (
+            "THE SWEEPER OF CHEONGUN SECT\n\nFor six years, Ha-jun swept.\n",
+            "The Sweeper of Cheongun Sect",
+        ),
+        ("The Lantern Keeper\n\nIt was dark.\n", "The Lantern Keeper"),
+        # Not titles: a sentence, a line in a longer block, a lone block.
+        ("It was a dark and stormy night.\n\nThe rain fell.\n", "story"),
+        ("Short line\nthat goes on\n\nMore.\n", "story"),
+        ("Only one block here", "story"),
+    ],
+)
+def test_txt_first_line_is_the_title(tmp_path, text, title):
+    """A text file's own title line, not its file name (found with the owner's story)."""
+    path = tmp_path / "story.txt"
+    path.write_text(text, encoding="utf-8")
+    book = read_book(path)
+    assert book.title == title
+    if title != "story":
+        first = book.chapters[0].paragraphs[0]
+        assert first.kind == "heading" and first.text.upper() == title.upper()

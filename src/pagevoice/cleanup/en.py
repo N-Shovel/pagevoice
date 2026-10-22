@@ -34,6 +34,39 @@ FOOTNOTE_REF = re.compile(r"\[(?:\d{1,3}|[A-Z]|[*†‡])\]")
 CONTENTS = re.compile(r"^\s*(?:table of )?contents\.?\s*$", re.I)
 
 
+# Words a title keeps in lowercase unless they come first ("The Sweeper of Cheongun Sect").
+SMALL_WORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "but",
+        "by",
+        "for",
+        "from",
+        "in",
+        "into",
+        "nor",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "with",
+    ]
+)
+
+
+def title_case(text: str) -> str:
+    """'THE SWEEPER OF CHEONGUN SECT' -> 'The Sweeper of Cheongun Sect'."""
+    words = text.lower().split()
+    return " ".join(
+        w if (i and w in SMALL_WORDS) else w[:1].upper() + w[1:] for i, w in enumerate(words)
+    )
+
+
 def is_chapter_heading(text: str) -> bool:
     return len(text) <= 80 and bool(CHAPTER.match(text))
 
