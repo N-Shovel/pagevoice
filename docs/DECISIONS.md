@@ -327,25 +327,38 @@ Every rule that fired on one clue now needs a second clue, or evidence from else
   - The voice model is never bundled. It's downloaded on first run from our release (D9).
   - About 440 MB unpacked on Windows.
 - **Self-test:** `PageVoice --self-test REPORT` checks, in the built app itself:
-  - normalization, the G2P (spaCy model, misaki data, espeak-ng), ONNX Runtime and FLAC
-  - the bundled ffmpeg, the sound library, the PDF and EPUB readers, and Qt
+  - normalization; the G2P on dictionary words (misaki, spaCy) and on unknown names (espeak-ng); ONNX Runtime; FLAC
+  - the bundled ffmpeg, by encoding a real M4B (AAC, ipod) and MP3 (LAME)
+  - the sound library, the PDF and EPUB readers, and Qt
   - the voice manifest
 
-  CI runs it on both builds and on the AppImage. It already caught one real gap: `language_tags` data missing, which would have broken every render. The manifest check may fail until the owner publishes `model_manifest.json`.
-- **Windows:** an Inno Setup installer (`packaging/windows/pagevoice.iss`).
+  CI runs it on both builds, on the AppImage (under a real X display, with the system PortAudio removed) and again after signing. It already caught one real gap: `language_tags` data missing, which would have broken every render.
+
+  The manifest check may fail until the owner publishes the real voice manifest, but never in a version-tag build (`PAGEVOICE_RELEASE=1`): an installer that can't download its voice is never released.
+- **Developer manifest:** the installed (frozen) app never uses the proposed manifest or the upstream download, whatever the caller asks (guards in `voice/manifest.py` and `voice/download.py`), and the proposed manifest isn't bundled.
+- **Windows:** an Inno Setup installer (`packaging/windows/pagevoice.iss`), compiled with Inno Setup 6.7.1, pinned.
   - Per-user by default, with no administrator prompt; "all users" is offered.
   - Start-menu entry, optional desktop icon, uninstaller.
+  - An upgrade replaces `_internal` completely.
   - The user's voice, cache, reviews and lists are never removed.
-- **Linux:** an AppImage built on ubuntu-22.04 (`packaging/linux/build-appimage.sh`). appimagetool 1.9.1 and the type2 runtime 20251108 are pinned by SHA-256.
+  - The launcher shows no error dialog (`disable_windowed_traceback`), so a broken build can't hang CI.
+- **Linux:** an AppImage built on ubuntu-22.04 (`packaging/linux/build-appimage.sh`).
+  - Qt's X11 (xcb) libraries are installed before building, so PyInstaller bundles them.
+  - appimagetool 1.9.1 and the type2 runtime 20251108 are pinned by SHA-256.
 - **Release workflow** (`.github/workflows/release.yml`), mirroring folder-tracker:
   - A `v*` tag builds ffmpeg (through the ffmpeg workflow), the Windows and Linux apps and the sources, and all three jobs attach to one release, handling the create race.
   - Pull requests that touch packaging build and self-test without releasing.
-- **Signing:** SignPath signs the app folder, then the installer, when `SIGNPATH_API_TOKEN` and `SIGNPATH_ORGANIZATION_ID` exist. The owner sets up project `pagevoice`, policy `release-signing` and artifact configurations `app-folder` and `installer`. Until then, releases are unsigned.
-- **Sources and licences:** every release carries:
-  - the exact source of ffmpeg 8.1.3, LAME 3.100 and espeak-ng 1.52.0 (espeakng-loader builds it unmodified from that tag), pinned by SHA-256 (`packaging/sources.sh`)
-  - `THIRD_PARTY_LICENSES.txt`: the 88 runtime packages with their licence texts, plus the native libraries (`tools/third_party.py`)
-
-  Qt, libsndfile and PortAudio are listed with their upstream source links.
+  - Jobs and self-tests have timeouts. The tag and version reach scripts only through `env:`.
+- **Signing:** SignPath signs the app folder, then the installer.
+  - Only for version tags, and only when both `SIGNPATH_API_TOKEN` and `SIGNPATH_ORGANIZATION_ID` exist. Pull requests and manual builds are never signed.
+  - The owner sets up project `pagevoice`, policy `release-signing`, and artifact configurations `app-folder` and `installer`. Until then, releases are unsigned.
+  - Still to do once SignPath exists: sign Inno Setup's uninstaller (`SignTool=` with `SignedUninstaller=yes`).
+- **Sources and licences** for the copyleft software in the builds:
+  - **Attached to every release:**
+    - ffmpeg 8.1.3, LAME 3.100, espeak-ng 1.52.0 (espeakng-loader builds it unmodified from that tag) and libsndfile 1.2.2, pinned by SHA-256 (`packaging/sources.sh`)
+    - the source archives of every bundled GPL/LGPL/MPL Python package, taken from `uv.lock` and checked against its SHA-256 (`tools/third_party.py --sources`)
+  - **Linked, not attached:** Qt 6.12.0 and PySide6/shiboken6 6.12.0 have no source archive on PyPI, and Qt's is about 1 GB. `SOURCES.txt` links their exact-version source on Qt's official servers, which LGPL-3.0 allows with clear directions. The owner may prefer to attach them; it's one more fetch line.
+  - **`THIRD_PARTY_LICENSES.txt`** (bundled and attached): the runtime packages with their licence texts, the native libraries with exact versions, and the full GPL, LGPL-2.1, LGPL-3.0 and MPL-2.0 texts (vendored in `packaging/licenses/`).
 - **Icon:** a simple placeholder drawn in code (`packaging/icons/`): an open book with sound waves. The owner may replace it.
 
 ---
