@@ -7,6 +7,7 @@ the bad file is deleted and never used.
 import hashlib
 import logging
 import os
+import sys
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -57,6 +58,8 @@ def ensure_file(
     checksum is the same either way. Dev tools only (benchmark, round-trip) while the
     manifest is still the proposed one; the app always uses our release (D9).
     """
+    if getattr(sys, "frozen", False):
+        use_source = False  # the installed app downloads from our release only (D9)
     folder = folder or models_dir()
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / entry.name

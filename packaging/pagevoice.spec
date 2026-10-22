@@ -33,7 +33,8 @@ for package in ("misaki", "espeakng_loader", "en_core_web_sm", "spacy", "thinc",
     datas += d
     binaries += b
     hiddenimports += h
-datas += collect_data_files("pagevoice")  # the model manifest(s)
+# The model manifest. Never the proposed one: the installed app uses our release (D9).
+datas += collect_data_files("pagevoice", excludes=["**/*.proposed.json"])
 
 # ffmpeg and its licences: find_ffmpeg() looks in <bundle>/ffmpeg/ (D18).
 binaries += [(str(FFMPEG / "bin" / FFMPEG_EXE), "ffmpeg")]
@@ -49,6 +50,9 @@ datas += [(str(ROOT / "packaging" / "icons" / "pagevoice.png"), "icons")]  # the
 def _keep(entry) -> bool:
     """PortAudio's ASIO builds are under Steinberg's own licence: never shipped (D36).
     Other platforms' and 32-bit PortAudio builds aren't needed either."""
+    parts = Path(entry[0]).parts
+    if len(parts) > 1 and parts[0] in ("spacy", "thinc") and parts[1] == "tests":
+        return False  # the packages' own test suites, copied in by collect_all
     name = Path(entry[0]).name.lower()
     if "asio" in name:
         return False
@@ -66,7 +70,10 @@ QT_UNUSED = [
 ]  # fmt: skip
 # Never bundled: test and development tools, and the banned PyTorch (D3).
 EXCLUDES = QT_UNUSED + ["torch", "tkinter", "pytest", "faster_whisper", "mutagen",
-                        "reportlab", "pip_licenses", "IPython", "matplotlib"]  # fmt: skip
+                        "reportlab", "pip_licenses", "IPython", "matplotlib",
+                        # packages' own tests and tools, pulled in by collect_all
+                        "spacy.tests", "thinc.tests", "onnxruntime.transformers",
+                        "onnxruntime.quantization", "onnxruntime.tools"]  # fmt: skip
 
 a = Analysis(  # noqa: F821
     [str(ROOT / "packaging" / "launcher.py")],
@@ -88,6 +95,9 @@ exe = EXE(  # noqa: F821
     exclude_binaries=True,  # one-folder: libraries sit next to the exe
     name="PageVoice",
     console=False,  # a window app; --self-test writes its report to a file
+    # No modal "unhandled exception" box from the launcher: it would hang a CI self-test
+    # (and the app logs and reports its own errors).
+    disable_windowed_traceback=True,
     icon=str(ROOT / "packaging" / "icons" / "pagevoice.ico") if OS == "windows" else None,
     upx=False,  # compressed exes trip antivirus tools
 )
