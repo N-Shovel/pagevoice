@@ -2,10 +2,10 @@
 
 Claude Code keeps this file current. It updates it after every finished step and when it pauses at the usage limit (see [PAUSE_AND_RESUME.md](PAUSE_AND_RESUME.md)). Keep it short and up to date. The details live in git history and pull requests.
 
-- **Last updated:** 2026-10-22
-- **Milestone:** M5, release builds. #15, #16 and #17 are merged; PR #18 (`m5-linux-portaudio`) carries the rest.
-- **Branch:** m5-linux-portaudio
-- **State:** working. The other states are: not started, working, waiting for owner, done.
+- **Last updated:** 2026-11-07
+- **Milestone:** M5, release builds. The code is done: every PR (#1 to #18) is merged, and CI on `main` is green.
+- **Branch:** main (this update: `progress-m5-done`)
+- **State:** waiting for owner. The other states are: not started, working, waiting for owner, done.
 - **Plan (owner, 2026-10-19):** PageVoice stays an audiobook maker, not a reader. The owner hands the work over and won't touch it. Order:
   1. Fix the review's serious findings (`pagevoice-review.md`, review of a7fa3f0).
   2. Add a Listen feature: play rendered chapters in the app (pause, seek, listen from a paragraph). Playback through sounddevice (proposed; license check first).
@@ -56,43 +56,26 @@ Claude Code keeps this file current. It updates it after every finished step and
   - CLI `export`.
   - The spec-review fixes are in D34.
 
-## In progress
-- **PR #18** (`m5-linux-portaudio`): the last M5 fixes.
-  - **Linux AppImage finds its bundled PortAudio.** CI proved it: with the system PortAudio removed, under xvfb with xcb, the self-test reports "bundled libportaudio.so.2".
-  - **D38** brought up to date.
-  - **Second spec review, both violations fixed:**
-    - mpg123 1.33.4 (inside libsndfile) and the PySide/shiboken 6.12.0 source are attached, pinned by SHA-256. Qt's source is linked on download.qt.io/archive.
-    - `packaging/linux/system-libs.sh` lists the Ubuntu libraries in the AppImage (package, version, licence, Launchpad source) into SYSTEM_LIBRARIES.txt, shipped in the AppImage and attached.
-  - **Second spec review, concerns fixed:**
-    - Releases are drafts until a `publish` job, which needs windows, linux and sources to succeed.
-    - Only `push` of a `v*` tag signs, sets release mode or attaches.
-    - A wheel-only copyleft package other than PySide/shiboken stops `--sources`.
-    - `sources.sh` asserts its pins match what's installed.
-    - The GPL-2.0-only rule is fixed both ways (LGPL is fine; bare `GPL-2.0` is denied; AND needs every part). `regex` (Apache-2.0 AND CNRI-Python) is now in `REVIEWED`: the owner's OK is needed, given by merging.
-    - The licence check runs over the build tools in release.yml.
-    - The G2P self-test checks each call.
-    - A build fails if a `*.proposed.json` gets in.
-    - The ffmpeg job has a timeout; the Linux version is validated; the signed self-test report is uploaded.
-  - **Not done:**
-    - sources are collected on Linux only (Windows-only copyleft deps aren't checked; none found)
-    - signing Inno Setup's uninstaller (needs SignPath)
-- **Fast tests:** 345 passed, 1 skipped.
+- M4 (PRs #8 and #9): the GUI (open, review, pronunciations, render, export). README (PR #10).
+- The owner's plan of 2026-10-19 (PRs #11 to #14): crashing buttons, the review's safety fixes, Listen (play rendered chapters in the app), and the review's reading and cleanup fixes.
+- M5 (PRs #15 to #18):
+  - PyInstaller one-folder build with a self-test, Inno Setup installer, AppImage, release workflow (D38).
+  - Releases stay drafts until a `publish` job, which needs windows, linux and sources to succeed. Only a pushed `v*` tag signs, sets release mode or attaches.
+  - The source of every copyleft part is attached (Python packages, ffmpeg, LAME, espeak-ng, libsndfile, mpg123, PySide); Qt's is linked on its long-term archive. SYSTEM_LIBRARIES.txt lists the Ubuntu libraries in the AppImage.
+  - The Linux AppImage finds its bundled PortAudio (proved in CI with the system copy removed).
+  - TXT books take their title from the file's title line (PR #16).
+  - Two spec reviews; every violation and concern is fixed.
+  - **Not done:** sources are collected on Linux only (a Windows-only copyleft package wouldn't be caught; none exists today), and Inno Setup's uninstaller isn't signed (needs SignPath).
+- **Fast tests on `main`:** 350 passed, 1 skipped (the golden test, until the golden pages exist).
 
 ## Next step
-1. Watch PR #18's checks after the last push. Once green, M5's code is done.
-2. Then the owner's items before `v1.0.0`:
-   - the voice release (real manifest)
-   - listening
-   - golden pages
-   - SignPath
-
-   Then a test install on a clean Windows and Ubuntu 22.04 machine: first-run download, render, listen, export.
-3. Tag `v1.0.0` only with the owner's OK.
+Nothing is left that Claude can do alone. Before `v1.0.0`, the owner's items below:
+1. The voice release (real manifest), listening, golden pages, SignPath.
+2. Then a test install on a clean Windows and Ubuntu 22.04 machine: first-run download, render, listen, export.
+3. Tag `v1.0.0` only with the owner's OK. A tag build fails until `model_manifest.json` is published.
 
 ## Waiting on the owner
 - **For the first release:** publish the voice files (model manifest), listen, check the golden pages, and apply to SignPath (approval can take weeks). D38 lists the SignPath names the workflow expects.
-- **PyInstaller in `REVIEWED`** (tools/check_licenses.py): the skill asks for the owner's OK. Merging the M5 PR gives it.
-- **Merge, in order:** #11 (buttons), #12 (safety fixes), #13 (Listen), then piece 3. Each builds on the one before; the permission settings don't let Claude merge.
 - **Proposed spoken forms:** `tests/voice/sentences.proposed.tsv` (12 rows from the review). Copy the rows you agree with into `sentences.tsv`.
 - **Model manifest:**
   - Check `src/pagevoice/voice/model_manifest.proposed.json`.
